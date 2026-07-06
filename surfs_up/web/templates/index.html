@@ -1,0 +1,1607 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SURFs_UP</title>
+  <style>
+    #startup-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      background: #08111f;
+      color: white;
+      font-family: "Segoe UI", Arial, sans-serif;
+      transition: opacity 220ms ease, visibility 220ms ease;
+    }
+    #startup-splash.splash-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .startup-splash-content {
+      text-align: center;
+    }
+    .startup-splash-spinner {
+      width: 42px;
+      height: 42px;
+      margin: 0 auto 18px;
+      border: 4px solid rgba(103, 232, 249, 0.25);
+      border-top-color: #67e8f9;
+      border-radius: 50%;
+      animation: startup-spin 0.8s linear infinite;
+    }
+    .startup-splash-title {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+    }
+    @keyframes startup-spin {
+      to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .startup-splash-spinner { animation: none; }
+      #startup-splash { transition: none; }
+    }
+  </style>
+  <script defer src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --color-surf-50: #effcff;
+      --color-surf-500: #0891b2;
+      --color-surf-600: #0e7490;
+      --color-space-950: #08111f;
+    }
+    @layer base {
+      body { @apply min-h-screen bg-slate-100 text-slate-800 antialiased; }
+      h2 { @apply col-span-full mt-3 border-b border-slate-200 pb-2 text-xl font-semibold text-slate-900; }
+      label { @apply grid gap-1.5 text-sm font-medium text-slate-700; }
+      input:not([type="checkbox"]), select, textarea {
+        @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm
+               outline-none transition focus:border-surf-500 focus:ring-3 focus:ring-cyan-100;
+      }
+      input[type="file"] { @apply cursor-pointer text-slate-600 file:mr-3 file:rounded-md file:border-0
+                                  file:bg-cyan-50 file:px-3 file:py-1.5 file:font-medium file:text-surf-600; }
+      input[type="checkbox"] { @apply size-4 rounded border-slate-300 accent-surf-600; }
+      label > span { @apply flex items-center gap-2; }
+      button {
+        @apply cursor-pointer rounded-lg bg-surf-600 px-4 py-2.5 text-sm font-semibold text-white
+               shadow-sm transition hover:bg-cyan-800 focus:ring-3 focus:ring-cyan-200 disabled:opacity-50;
+      }
+      pre { @apply max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-space-950 p-4
+                   font-mono text-xs leading-relaxed text-cyan-50 shadow-inner; }
+    }
+    @layer components {
+      .form-grid { @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3; }
+      .wide, .actions { @apply col-span-full; }
+      .actions { @apply flex flex-wrap gap-3 border-t border-slate-200 pt-5; }
+      .workflow-footer { @apply items-center justify-between rounded-xl bg-slate-50 px-3 py-3; }
+      .button-group { @apply flex flex-wrap items-center gap-2; }
+      .secondary-button { @apply bg-slate-700 hover:bg-slate-800 focus:ring-slate-200; }
+      .busy-button { @apply bg-red-700 text-white hover:bg-red-700; }
+      .success-button { @apply bg-green-700 text-white hover:bg-green-700; }
+      .workflow-status { @apply min-w-40 flex-1 px-3 text-center text-sm font-medium text-slate-600; }
+      .card { @apply mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7; }
+      .error { @apply mt-5 rounded-xl border border-red-200 bg-red-50 p-4 font-medium text-red-700; }
+      .tab-button { @apply rounded-none border-b-3 border-transparent bg-transparent px-4 py-3 text-slate-500
+                           shadow-none hover:bg-slate-50 hover:text-slate-900 focus:ring-0; }
+      .tab-button.active { @apply border-surf-500 text-surf-600; }
+      .tab-button:disabled { @apply cursor-not-allowed text-slate-300 hover:bg-transparent; }
+      .tab-panel { @apply hidden; }
+      .tab-panel.active { @apply block; }
+      .tab-panel.form-grid.active { @apply grid; }
+      .group-box { @apply col-span-full rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5; }
+      .group-title { @apply mb-4 text-base font-semibold text-slate-900; }
+      .control-row { @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3; }
+      .source-choice { @apply flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200
+                              bg-white px-3 py-2 text-sm hover:border-cyan-300; }
+      .source-panel { @apply hidden; }
+      .source-panel.active { @apply block; }
+      .inner-tabs { @apply col-span-full mb-1 flex flex-wrap gap-1 border-b border-slate-200; }
+      .inner-tab-button { @apply rounded-b-none bg-transparent text-slate-500 shadow-none hover:bg-slate-100 hover:text-slate-900; }
+      .inner-tab-button.active { @apply border-b-3 border-surf-500 text-surf-600; }
+      .product-panel { @apply hidden; }
+      .product-panel.active { @apply block; }
+      dialog { @apply w-[min(46rem,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl; }
+      dialog::backdrop { @apply bg-slate-950/55 backdrop-blur-sm; }
+      .speed-slider { writing-mode: vertical-lr; direction: rtl; width: 5px; min-width: 5px; height: 100%; accent-color: #0e7490; }
+    }
+  </style>
+</head>
+<body>
+  <div id="startup-splash" role="status" aria-live="polite" aria-label="Loading SURFs UP">
+    <div class="startup-splash-content">
+      <div class="startup-splash-spinner" aria-hidden="true"></div>
+      <p class="startup-splash-title">Loading SURFs UP…</p>
+    </div>
+  </div>
+  <script>
+    window.addEventListener("load", () => {
+      const splash = document.getElementById("startup-splash");
+      if (!splash) return;
+      splash.classList.add("splash-hidden");
+      window.setTimeout(() => splash.remove(), 250);
+    });
+  </script>
+  <header class="bg-space-950 text-white shadow-xl">
+    <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <p class="mb-1 text-xs font-semibold tracking-wide text-cyan-300">Solar wind modelling via Space-weather Utilities for Research and Forecasting (SURF)'s User Panel</p>
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">SURF's UP</h1>
+    </div>
+  </header>
+  <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+  <section class="workflow-footer mb-4 flex flex-wrap gap-3 border border-slate-200 bg-white shadow-sm">
+    <div class="button-group">
+      <button type="button" id="load-configuration" class="secondary-button">Load Configuration</button>
+      <button type="button" id="save-configuration" class="secondary-button">Save Configuration</button>
+      <input id="configuration-file" type="file" accept=".json" class="hidden">
+    </div>
+    <p class="workflow-status" id="workflow-status">
+      {% if error %}Configuration error
+      {% elif result and result.success %}Run completed
+      {% elif result %}Run failed
+      {% elif code %}Code generated
+      {% else %}Ready{% endif %}
+    </p>
+    <div class="button-group">
+      {% if code %}
+      <button type="button" class="secondary-button" id="show-generated-code">Show Code</button>
+      {% else %}
+      <button type="submit" form="simulation-form" class="secondary-button"
+              name="action" value="preview">Show Code</button>
+      {% endif %}
+      <button type="button" class="secondary-button" id="show-terminal-output"
+              {% if not result %}disabled{% endif %}>
+        Show Terminal Output
+      </button>
+      <button type="submit" form="simulation-form" name="action" value="run" id="run-surf-button"
+              {% if result and result.success %}class="success-button"{% endif %}>
+        {% if result and result.success %}Run Complete{% else %}Run SURF{% endif %}
+      </button>
+    </div>
+  </section>
+  <nav class="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"
+       aria-label="SURF workflow">
+    <div class="flex min-w-max items-stretch justify-between gap-2">
+      <div class="flex min-w-max" role="tablist">
+        <button class="tab-button active" type="button" role="tab" data-tab="model">Model specification</button>
+        <button class="tab-button" type="button" role="tab" data-tab="ambient">Ambient wind</button>
+        <button class="tab-button" type="button" role="tab" data-tab="cme">CMEs</button>
+        {% if run_id %}
+        <span class="mx-3 border-l border-slate-200" id="post-run-tab-spacer"></span>
+        <button class="tab-button" type="button" role="tab" data-tab="plots">Plots</button>
+        <button class="tab-button" type="button" role="tab" data-tab="movies">Movies</button>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <form class="card mt-0" id="simulation-form" method="post" enctype="multipart/form-data" novalidate>
+    <section class="tab-panel form-grid active" data-panel="model" role="tabpanel">
+    <h2 class="mt-0">Model parameters</h2>
+    <fieldset class="group-box">
+      <legend class="group-title px-1">Model Parameters</legend>
+      <div class="grid gap-4">
+        <div class="grid items-end gap-3 lg:grid-cols-[minmax(14rem,2fr)_auto_minmax(7rem,1fr)_auto_minmax(10rem,1fr)]">
+          <label>Run start date
+            <input name="start_datetime" id="model-start-datetime" type="datetime-local" step="1" value="{{ default_start }}">
+          </label>
+          <span class="pb-2 text-sm font-medium text-slate-600">CR</span>
+          <label><span class="sr-only">Carrington rotation</span>
+            <input name="cr_num" id="model-cr-number" type="number" value="{{ default_cr_num }}">
+          </label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Earth Carr lon at start</span>
+          <label><span class="sr-only">Earth Carrington longitude</span>
+            <input name="cr_lon_init_deg" id="model-cr-longitude" type="number" step="0.1" value="{{ '%.1f'|format(default_cr_lon) }}">
+          </label>
+        </div>
+        <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[auto_minmax(7rem,1fr)_auto_minmax(10rem,1fr)_minmax(12rem,auto)]">
+          <span class="pb-2 text-sm font-medium text-slate-600">Run time</span>
+          <label><span class="sr-only">Run time in days</span>
+            <input name="simtime_days" type="number" step="0.1" value="10">
+          </label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Solver</span>
+          <label><span class="sr-only">Solver</span>
+            <select name="solver"><option value="huxt">HUXt</option><option>hydro</option><option>hydro-pcm</option></select>
+          </label>
+          <label class="pb-2"><span><input name="include_bpol" type="checkbox"> Include bpol in run</span></label>
+        </div>
+      </div>
+    </fieldset>
+    <fieldset class="group-box">
+      <legend class="group-title px-1">Coordinate settings</legend>
+      <div class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_1fr_auto_1fr]">
+        <span class="pb-2 text-sm font-medium text-slate-600">Model latitude (defaults to Earth)</span>
+        <label><span class="sr-only">Model latitude</span><input name="latitude" id="model-latitude" type="number" step="0.1" value="{{ '%.2f'|format(default_latitude) }}"></label>
+        <span class="pb-2 text-sm font-medium text-slate-600">Frame</span>
+        <label><span class="sr-only">Coordinate frame</span><select name="frame"><option value="sidereal">Sidereal (recommended for 2D runs)</option><option value="synodic">Synodic (recommended for 1D runs)</option></select></label>
+      </div>
+      <div class="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(16rem,auto)_1fr]">
+        <label class="pb-2"><span><input name="is_1d" id="model-is-1d" type="checkbox"> Run as 1D (single longitude)</span></label>
+        <div id="model-longitude-row" class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_1fr]">
+          <span class="pb-2 text-sm font-medium text-slate-600">Longitude</span>
+          <label><span class="sr-only">Longitude start</span><input name="lon_min" type="number" value="315"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">to</span>
+          <label><span class="sr-only">Longitude stop</span><input name="lon_max" type="number" value="45"></label>
+        </div>
+      </div>
+    </fieldset>
+    <fieldset class="group-box">
+      <legend class="group-title px-1">Advanced</legend>
+      <div class="grid gap-4">
+        <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_auto_1fr]">
+          <span class="pb-2 text-sm font-medium text-slate-600">Radial bounds — rmin</span>
+          <label><span class="sr-only">Inner radius</span><input name="rmin" id="model-rmin" type="number" step="0.1" value="21.5"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">rmax</span>
+          <label><span class="sr-only">Outer radius</span><input name="rmax" type="number" step="0.1" value="240"></label>
+        </div>
+        <div class="grid items-end gap-3 sm:grid-cols-3 lg:grid-cols-[auto_1fr_auto_1fr_auto_1fr]">
+          <span class="pb-2 text-sm font-medium text-slate-600">Grid — dr</span>
+          <label><span class="sr-only">Radial grid spacing</span><input name="dr_rs" type="number" step="0.01" value="1.5"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">nlon</span>
+          <label><span class="sr-only">Longitude grid points</span><input name="nlon" type="number" step="1" value="128"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">vmax</span>
+          <label><span class="sr-only">Maximum grid speed</span><input name="vmax_kms" type="number" step="100" value="3000"></label>
+        </div>
+        <div class="grid items-end gap-3 lg:grid-cols-[minmax(12rem,auto)_auto_1fr]">
+          <label class="pb-2"><span><input name="streak_lines_enabled" type="checkbox"> Enable streak lines</span></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Spacing</span>
+          <label><span class="sr-only">Streak-line spacing</span><input name="streak_spacing_deg" type="number" value="10"></label>
+        </div>
+        <label><span><input name="track_cmes" type="checkbox"> Track CME fronts</span></label>
+      </div>
+    </fieldset>
+    </section>
+
+    <section class="tab-panel form-grid" data-panel="ambient" role="tabpanel">
+    <h2 class="wide">Ambient solar wind</h2>
+    <input type="hidden" name="ambient_source" id="ambient-source" value="wsa_iswa">
+    <div class="inner-tabs wide" id="ambient-source-tabs">
+      {% for value, label in [
+        ("user_specified", "User specified"), ("mas", "MAS"), ("wsa", "WSA"),
+        ("wsa_iswa", "WSA (ISWA)"), ("insitu_backmapped", "OMNI-backmapped"),
+        ("omni", "OMNI outwards"), ("cortom", "CorTom")
+      ] %}
+      <button type="button" class="inner-tab-button ambient-tab-button {% if value == 'wsa_iswa' %}active{% endif %}"
+              data-ambient-tab="{{ value }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <fieldset class="group-box source-panel" data-source-panel="user_specified">
+      <legend class="group-title px-1">User-specified boundary</legend>
+      <p class="mb-4 text-sm text-slate-600">Set solar-wind speed at 128 Carrington longitudes. Changes are periodic across 0/360°.</p>
+      <div class="button-group mb-4">
+        <button type="button" class="secondary-button" id="reset-speed-profile">Reset</button>
+        <button type="button" class="secondary-button" id="smooth-speed-profile">Smooth</button>
+        <button type="button" class="secondary-button" id="randomise-speed-profile">Randomise</button>
+      </div>
+      <div class="w-full max-w-3xl">
+        <div id="speed-profile-sliders" class="flex h-36 w-full items-stretch gap-px overflow-x-auto rounded-lg border border-slate-200 bg-white p-2"></div>
+        <div class="mt-1 flex justify-between text-xs text-slate-500"><span>0°</span><span>Carrington longitude</span><span>360°</span></div>
+      </div>
+      <textarea name="speed_profile" id="speed-profile" class="hidden"></textarea>
+      <input name="speed_kms" type="hidden" value="400">
+    </fieldset>
+    <fieldset class="group-box source-panel" data-source-panel="mas">
+      <legend class="group-title px-1">HelioMAS boundary profile</legend>
+      <div class="control-row">
+        <label>Carrington rotation<input name="mas_cr_num" id="mas-cr-number" type="number" value="2000"></label>
+        <label><span><input name="mas_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+        <label><span><input name="mas_use_map_time" id="mas-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+      </div>
+      <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot MAS input</button></div>
+    </fieldset>
+    <fieldset class="group-box source-panel" data-source-panel="wsa">
+      <legend class="group-title px-1">WSA boundary file</legend>
+      <div class="control-row">
+        <label class="wide">File<input name="wsa_file" id="wsa-file" type="file" accept=".fits"></label>
+        <label><span><input name="wsa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+        <label><span><input name="wsa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
+        <label><span><input name="wsa_use_map_time" id="wsa-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+      </div>
+      <p class="wide text-slate-600" id="wsa-file-status">No file selected.</p>
+      <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot WSA input</button></div>
+    </fieldset>
+    <fieldset class="group-box source-panel active" data-source-panel="wsa_iswa">
+      <legend class="group-title px-1">WSA map from ISWA</legend>
+      <div class="control-row">
+        <label>Map date<input name="iswa_map_date" type="date" value="{{ default_start[:10] }}"></label>
+        <p class="wide text-slate-600">Downloads the newest available WSA map at or before the selected map date.</p>
+        <label><span><input name="iswa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+        <label><span><input name="iswa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
+      </div>
+      <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot WSA input</button></div>
+    </fieldset>
+    <fieldset class="group-box source-panel" data-source-panel="insitu_backmapped">
+      <legend class="group-title px-1">OMNI backmapped boundary</legend>
+      <label>Mode <select name="insitu_mode">
+        <option value="forecast">Forecast</option>
+        <option value="reconstruction">Reconstruction (requires 27days of data after run end time)</option>
+      </select></label>
+    </fieldset>
+    <fieldset class="group-box source-panel" data-source-panel="omni">
+      <legend class="group-title px-1">OMNI outwards boundary</legend>
+      <label><span><input name="use_215_inner_boundary" type="checkbox" checked> Set inner boundary to 215 Rs and run outwards</span></label>
+    </fieldset>
+    <fieldset class="group-box source-panel" data-source-panel="cortom">
+      <legend class="group-title px-1">CorTom boundary file</legend>
+      <div class="control-row">
+        <label class="wide">File<input name="cortom_file" id="cortom-file" type="file" accept=".dat"></label>
+        <label><span><input name="cortom_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+        <label><span><input name="cortom_use_map_time" id="cortom-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+      </div>
+      <p class="wide text-slate-600" id="cortom-file-status">No file selected.</p>
+      <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot CorTom input</button></div>
+    </fieldset>
+    <section class="wide mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="ambient-plot-output">
+      <h3 class="font-semibold text-slate-900">Ambient input preview</h3>
+      <p class="mt-2 text-sm font-medium text-surf-600" id="ambient-product-status">Choose MAS, WSA, WSA (ISWA), or CorTom and click Plot.</p>
+      <img class="mt-4 hidden w-full rounded-xl border border-slate-200 bg-white shadow-sm"
+           id="ambient-plot-image" alt="Selected ambient input plot" style="max-height: 90vh; object-fit: contain;">
+    </section>
+    </section>
+
+    <section class="tab-panel form-grid" data-panel="cme" role="tabpanel">
+    <h2 class="wide">CMEs</h2>
+    <fieldset class="group-box">
+      <legend class="group-title px-1">Cone CME lists (typically for model inner boundary at 0.1 AU)</legend>
+      <div class="grid gap-4">
+        <label>
+          <span><input name="grab_donki_at_run_start" type="checkbox" checked>
+            Grab DONKI CMEs at run start</span>
+        </label>
+        <div class="grid items-center gap-3 sm:grid-cols-[auto_1fr]">
+          <button type="button" id="load-donki">Grab the DONKI CMEs now</button>
+          <p id="donki-status" class="text-sm text-slate-500">Uses the current model start and run duration.</p>
+        </div>
+        <div class="grid items-center gap-3 sm:grid-cols-[auto_1fr]">
+          <button type="button" id="choose-cone-file">Load a user-supplied Cone CME list</button>
+          <input name="cone_file" id="cone-file" class="hidden" type="file" accept=".in">
+          <p id="cone-file-status" class="text-sm text-slate-500">No cone file loaded.</p>
+        </div>
+      </div>
+    </fieldset>
+    <fieldset class="group-box">
+      <legend class="group-title px-1">Manually add cone CME</legend>
+      <button type="button" id="open-cme-editor">Open manual CME editor</button>
+    </fieldset>
+    <dialog id="cme-editor">
+      <div class="p-5 sm:p-7">
+          <h3 class="mb-5 text-xl font-semibold text-slate-900" id="cme-editor-title">Manually add cone CME</h3>
+      <div class="control-row">
+        <label>HEEQ longitude (deg)<input id="cme-longitude" type="number" value="0" step="1"></label>
+        <label>HEEQ latitude (deg)<input id="cme-latitude" type="number" value="0" step="1"></label>
+        <label>Speed (km/s)<input id="cme-speed" type="number" value="800" step="10"></label>
+        <label>Width (deg)<input id="cme-width" type="number" value="60" step="1"></label>
+        <label>Launch day<input id="cme-launch-day" type="number" value="0.5" step="0.1"></label>
+        <label>Launch datetime (UTC)<input id="cme-launch-datetime" type="datetime-local"></label>
+        <label>Thickness (Rs)<input id="cme-thickness" type="number" value="5" step="0.5"></label>
+        <label>Initial height (Rs)<input id="cme-initial-height" type="number" value="21.5" step="0.5"></label>
+        <label>Fixed duration (hours)<input id="cme-duration" type="number" value="12" step="0.5"></label>
+        <label>Profile type<select id="cme-profile"><option>square</option><option>sinusoidal</option></select></label>
+        <label>Plasma mode<select id="cme-plasma-mode"><option>Fraction of ambient</option><option>Absolute values</option></select></label>
+        <label>Density fraction<input id="cme-density-fraction" type="number" value="1" step="0.1"></label>
+        <label>Temperature fraction<input id="cme-temperature-fraction" type="number" value="1" step="0.1"></label>
+        <label>CME density (p+/cm³)<input id="cme-density" type="number" value="100" step="1"></label>
+        <label>CME temperature (K)<input id="cme-temperature" type="number" value="100000" step="1000"></label>
+        <label><span><input id="cme-expansion" type="checkbox"> Expansion</span></label>
+        <label><span><input id="cme-fixed-duration" type="checkbox" checked> Fixed duration</span></label>
+      </div>
+      <div class="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
+        <button class="secondary-button" type="button" id="cancel-cme-editor">Cancel</button>
+        <button type="button" id="add-cme">Add CME</button>
+      </div>
+      </div>
+    </dialog>
+    <fieldset class="group-box">
+      <legend class="group-title px-1">CME List</legend>
+      <input type="hidden" name="cmes_json" id="cmes-json" value="[]">
+      <div id="cme-list" class="space-y-2 text-sm text-slate-600">
+        <p id="empty-cme-list">No CMEs added.</p>
+      </div>
+      <div class="mt-4 flex gap-2">
+        <button type="button" id="edit-selected-cme" disabled>Edit Selected</button>
+        <button class="bg-red-700 hover:bg-red-800" type="button" id="remove-selected-cme" disabled>Remove Selected</button>
+        <button class="bg-red-700 hover:bg-red-800" type="button" id="clear-cmes">Clear All</button>
+      </div>
+    </fieldset>
+    </section>
+  </form>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if result %}
+    <dialog id="terminal-output-dialog">
+      <div class="p-5 sm:p-7">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="m-0">{{ result.message }}</h2>
+          <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Close</button>
+        </div>
+        <pre>{{ result.output or "(No terminal output.)" }}</pre>
+      </div>
+    </dialog>
+  {% endif %}
+    <section class="card tab-panel" data-panel="plots" role="tabpanel">
+      <h2 class="mt-0">Plots</h2>
+      {% if run_id %}
+      <p class="mb-5 text-sm text-slate-500">These products remain available while this server process retains the run.</p>
+      <form class="form-grid" id="plots-form" onsubmit="return false">
+        <div class="inner-tabs" data-inner-tabs="plot-products">
+          <button type="button" class="inner-tab-button active" data-inner-tab="map-product">2D Map</button>
+          <button type="button" class="inner-tab-button" data-inner-tab="radial-product">Radial Profile</button>
+          <button type="button" class="inner-tab-button" data-inner-tab="timeseries-product">Time Series</button>
+        </div>
+        <fieldset class="group-box product-panel active" id="map-controls" data-inner-panel="map-product">
+          <legend class="group-title px-1">2D Map (sa.plot)</legend>
+          <div class="grid max-w-2xl gap-3">
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time
+              <input id="plot-time" type="number" min="0" max="1000" step="0.1" value="1.5">
+            </label>
+            <label><span><input id="map-minimal" type="checkbox"> Minimal plot</span></label>
+            <label><span><input id="map-hcs" type="checkbox" checked> Plot HCS</span></label>
+            <label><span><input id="map-annotate" type="checkbox" checked> Annotate plot</span></label>
+            <label><span><input id="map-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
+            <div class="flex flex-wrap items-center gap-3">
+              <label><span><input id="map-limit-rmax" type="checkbox"> Limit outer radius</span></label>
+              <input class="max-w-40" aria-label="Outer radius in solar radii" id="map-rmax"
+                     type="number" min="1" max="5000" value="240" step="5" disabled>
+            </div>
+            <div><button type="button" onclick="showPlot('map', this)">Plot 2D Map</button></div>
+          </div>
+        </fieldset>
+        <fieldset class="group-box product-panel" data-inner-panel="radial-product">
+          <legend class="group-title px-1">Radial Profile (sa.plot_radial)</legend>
+          <div class="grid max-w-2xl gap-3">
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time
+              <input id="radial-time" type="number" min="0" max="1000" step="0.1" value="1.5">
+            </label>
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Longitude
+              <input id="radial-lon" type="number" min="-360" max="360" step="1" value="0">
+            </label>
+            <div><button type="button" onclick="showPlot('radial', this)">Plot Radial Profile</button></div>
+          </div>
+        </fieldset>
+        <fieldset class="group-box product-panel" data-inner-panel="timeseries-product">
+          <legend class="group-title px-1">Time Series (sa.plot_timeseries)</legend>
+          <div class="grid max-w-3xl gap-3">
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Location <select id="timeseries-observer">
+              {% for value, label in [("Earth","Earth"),("Mercury","Mercury"),("Venus","Venus"),
+                ("Mars","Mars"),("Jupiter","Jupiter"),("Saturn","Saturn"),("ACE","ACE"),
+                ("PSP","Parker Solar Probe"),("SOLO","Solar Orbiter"),("STA","STEREO-A"),
+                ("STB","STEREO-B"),("ULYSSES","Ulysses"),("custom","Custom coordinates")] %}
+              <option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select></label>
+            <p class="text-sm text-slate-500">Standard locations follow each observer's ephemeris throughout the run.</p>
+            <div class="hidden grid-cols-1 items-end gap-3 sm:grid-cols-[10rem_1fr_1fr]" id="timeseries-custom-coordinates">
+              <span class="pb-2 text-sm font-medium text-slate-700">Custom coordinates</span>
+              <label>Radius (AU)<input id="plot-radius" type="number" min="0.1" max="10" step="0.1" value="1"></label>
+              <label>Longitude (deg)<input id="timeseries-lon" type="number" min="-360" max="360" step="1" value="0"></label>
+            </div>
+            <div class="grid items-end gap-3 sm:grid-cols-[10rem_1fr_auto]">
+              <span class="pb-2 text-sm font-medium text-slate-700">CSV output</span>
+              <input id="timeseries-csv-output" readonly placeholder="Browser download (.csv)">
+              <button type="button" class="secondary-button" id="clear-timeseries-csv">Clear</button>
+            </div>
+            <div class="button-group">
+              <button type="button" onclick="showPlot('timeseries', this)">Plot Time Series</button>
+              <button type="button" class="secondary-button" onclick="downloadTimeseries(this)">Export Time Series CSV</button>
+            </div>
+          </div>
+        </fieldset>
+      </form>
+      <section class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
+        <h3 class="font-semibold text-slate-900">Figure output</h3>
+        <p class="mt-2 text-sm font-medium text-surf-600" id="product-status">Choose a plot above to render it here.</p>
+        <img class="mt-4 hidden w-full rounded-xl border border-slate-200 bg-white shadow-sm"
+             id="plot-image" alt="Selected SURF plot">
+      </section>
+      {% else %}
+      <p class="text-slate-500">Run SURF successfully to enable plots.</p>
+      {% endif %}
+    </section>
+
+    <section class="card tab-panel" data-panel="movies" role="tabpanel">
+      <h2 class="mt-0">Movies</h2>
+      {% if run_id %}
+      <form class="form-grid" id="movies-form" onsubmit="return false">
+        <div class="inner-tabs" data-inner-tabs="movie-products">
+          <button type="button" class="inner-tab-button active" data-inner-tab="map-movie">2D Movie</button>
+          <button type="button" class="inner-tab-button" data-inner-tab="timeseries-movie">Movie with Time Series</button>
+        </div>
+        <fieldset class="group-box product-panel active" data-inner-panel="map-movie">
+          <legend class="group-title px-1">Animation (sa.animate)</legend>
+          <div class="grid max-w-4xl gap-4">
+            <div class="grid gap-3 sm:grid-cols-3">
+              <label>Tag<input id="movie-tag" value="gui"></label>
+              <label>Duration (s)<input id="movie-duration" type="number" min="1" max="600" value="10"></label>
+              <label>Frame rate (fps)<input id="movie-fps" type="number" min="1" max="60" value="5"></label>
+            </div>
+            <div class="flex flex-wrap items-center gap-4">
+              <label><span><input id="movie-hcs" type="checkbox" checked> Plot HCS</span></label>
+              <label><span><input id="movie-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
+              <label><span><input id="movie-limit-rmax" type="checkbox"> Limit outer radius</span></label>
+              <input class="max-w-40" aria-label="Movie outer radius" id="movie-rmax"
+                     type="number" min="1" max="5000" value="240" step="5" disabled>
+            </div>
+            <div class="grid items-end gap-3 sm:grid-cols-[6rem_1fr_auto]">
+              <span class="pb-2 text-sm font-medium text-slate-700">Output</span>
+              <input id="movie-output" readonly placeholder="Browser download (.gif)">
+              <button type="button" class="secondary-button" onclick="document.getElementById('movie-output').value=''">Clear</button>
+            </div>
+            <label><span><input id="movie-play" type="checkbox" checked> Play movie when complete</span></label>
+            <div><button type="button" onclick="downloadMovie('map', this)">Create 2D Movie</button></div>
+          </div>
+        </fieldset>
+        <fieldset class="group-box product-panel" data-inner-panel="timeseries-movie">
+          <legend class="group-title px-1">Animation with time series (sa.animate_with_ts)</legend>
+          <div class="grid max-w-4xl gap-4">
+            <div class="grid gap-3 sm:grid-cols-3">
+              <label>Tag<input id="movie-ts-tag" value="gui"></label>
+              <label>Duration (s)<input id="movie-ts-duration" type="number" min="1" max="600" value="10"></label>
+              <label>Frame rate (fps)<input id="movie-ts-fps" type="number" min="1" max="60" value="5"></label>
+            </div>
+            <div class="flex flex-wrap items-center gap-4">
+              <label><span><input id="movie-ts-hcs" type="checkbox" checked> Plot HCS</span></label>
+              <label><span><input id="movie-ts-limit-rmax" type="checkbox"> Limit outer radius</span></label>
+              <input class="max-w-40" aria-label="Time-series movie outer radius" id="movie-ts-rmax"
+                     type="number" min="1" max="5000" value="240" step="5" disabled>
+            </div>
+            <label class="grid items-center gap-3 sm:grid-cols-[6rem_1fr]">Field
+              <select id="movie-ts-field"><option>P_DYN</option><option selected>V</option><option>n</option><option>T</option></select>
+            </label>
+            <div class="grid items-end gap-3 sm:grid-cols-[6rem_1fr_auto]">
+              <span class="pb-2 text-sm font-medium text-slate-700">Output</span>
+              <input id="movie-ts-output" readonly placeholder="Browser download (.gif)">
+              <button type="button" class="secondary-button" onclick="document.getElementById('movie-ts-output').value=''">Clear</button>
+            </div>
+            <div><button type="button" onclick="downloadMovie('timeseries', this)">Create Movie With Time Series</button></div>
+          </div>
+        </fieldset>
+      </form>
+      <p class="mt-4 text-sm text-slate-500" id="movie-status">Rendering may take several minutes for a long simulation.</p>
+      <section class="mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4"
+               id="movie-output-panel">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h3 class="font-semibold text-slate-900">Movie output</h3>
+          <a id="download-rendered-movie"
+             class="cursor-pointer rounded-lg bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+            Download Movie
+          </a>
+        </div>
+        <img id="movie-player"
+             class="mx-auto max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-white"
+             alt="Rendered SURF movie">
+      </section>
+      {% else %}
+      <p class="text-slate-500">Run SURF successfully to enable movies.</p>
+      {% endif %}
+    </section>
+
+  {% if run_id %}
+    <script>
+      const runBase = {{ url_for('index')|tojson }} + "runs/{{ run_id }}";
+      function values() {
+        return {
+          time: document.getElementById("plot-time").value,
+          radial_time: document.getElementById("radial-time").value,
+          radial_lon: document.getElementById("radial-lon").value,
+          timeseries_lon: document.getElementById("timeseries-lon").value,
+          observer: document.getElementById("timeseries-observer").value,
+          radius: document.getElementById("plot-radius").value,
+          minimal: document.getElementById("map-minimal").checked ? "1" : "0",
+          plot_hcs: document.getElementById("map-hcs").checked ? "1" : "0",
+          annotate: document.getElementById("map-annotate").checked ? "1" : "0",
+          trace_earth: document.getElementById("map-earth").checked ? "1" : "0",
+          plot_rmax: document.getElementById("map-limit-rmax").checked
+            ? document.getElementById("map-rmax").value : ""
+        };
+      }
+      function beginTask(button, text) {
+        if (!button) return;
+        button.dataset.idleText = button.textContent;
+        button.disabled = true;
+        button.classList.remove("success-button");
+        button.classList.add("busy-button");
+        button.textContent = text;
+      }
+      function finishTask(button, text) {
+        if (!button) return;
+        button.disabled = false;
+        button.classList.remove("busy-button");
+        button.classList.add("success-button");
+        button.textContent = text;
+        window.setTimeout(() => {
+          button.classList.remove("success-button");
+          button.textContent = button.dataset.idleText || button.textContent;
+        }, 1800);
+      }
+      function failTask(button) {
+        if (!button) return;
+        button.disabled = false;
+        button.classList.remove("busy-button", "success-button");
+        button.textContent = button.dataset.idleText || button.textContent;
+      }
+      function showPlot(kind, button) {
+        const image = document.getElementById("plot-image");
+        const query = new URLSearchParams(values());
+        const status = document.getElementById("product-status");
+        const plotCode = buildPlotCode(kind);
+        if (plotCode) recordPlotCode(plotCode);
+        beginTask(button, "Generating plot...");
+        status.textContent = "Generating plot...";
+        fetch(`${runBase}/plot/${kind}.png?${query}&cache=${Date.now()}`)
+          .then(async response => {
+            if (!response.ok) {
+              const message = (await response.text()).replace(/<[^>]+>/g, " ").trim();
+              throw new Error(message || `HTTP ${response.status}`);
+            }
+            return response.blob();
+          })
+          .then(blob => {
+            if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+            image.dataset.objectUrl = URL.createObjectURL(blob);
+            image.src = image.dataset.objectUrl;
+            image.style.display = "block";
+            status.textContent = "";
+            finishTask(button, "Plot Ready");
+          })
+          .catch(error => {
+            status.textContent = `Plot generation failed: ${error.message}`;
+            failTask(button);
+          });
+      }
+      function downloadTimeseries(button = null) {
+        const observer = document.getElementById("timeseries-observer").value;
+        document.getElementById("timeseries-csv-output").value =
+          `SURF_${observer}_timeseries.csv`;
+        const csvUrl = `${runBase}/timeseries.csv?${new URLSearchParams(values())}`;
+        beginTask(button, "Exporting CSV...");
+        fetch(csvUrl)
+          .then(async response => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.blob();
+          })
+          .then(blob => {
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = `SURF_${observer}_timeseries.csv`;
+            link.click();
+            URL.revokeObjectURL(objectUrl);
+            finishTask(button, "CSV Ready");
+          })
+          .catch(error => {
+            document.getElementById("product-status").textContent =
+              `CSV export failed: ${error.message}`;
+            failTask(button);
+          });
+        return;
+        const legacyObserver = document.getElementById("timeseries-observer").value;
+        if (legacyObserver === "custom") {
+          document.getElementById("product-status").textContent =
+            "Choose a standard observer for CSV export.";
+          return;
+        }
+        window.location.href = `${runBase}/timeseries.csv?observer=${encodeURIComponent(legacyObserver)}`;
+      }
+      function downloadMovie(kind = "map", button = null) {
+        const withTimeseries = kind === "timeseries";
+        const prefix = withTimeseries ? "movie-ts" : "movie";
+        const tag = document.getElementById(`${prefix}-tag`).value || "gui";
+        const playOnComplete = withTimeseries ||
+          document.getElementById("movie-play").checked;
+        const movieQuery = new URLSearchParams({
+          tag,
+          duration: document.getElementById(`${prefix}-duration`).value,
+          fps: document.getElementById(`${prefix}-fps`).value,
+          plot_hcs: document.getElementById(`${prefix}-hcs`).checked ? "1" : "0",
+          trace_earth: !withTimeseries && document.getElementById("movie-earth").checked ? "1" : "0",
+          plot_rmax: document.getElementById(`${prefix}-limit-rmax`).checked
+            ? document.getElementById(`${prefix}-rmax`).value : "",
+          field: document.getElementById("movie-ts-field").value,
+          inline: "0"
+        });
+        document.getElementById(`${prefix}-output`).value = `SURF_${tag}_movie.gif`;
+        const movieStatus = document.getElementById("movie-status");
+        beginTask(button, "Rendering movie...");
+        movieStatus.textContent =
+          "Rendering movie frames. This may take several minutes; please wait...";
+        const movieUrl = `${runBase}/movie/${kind}.gif?${movieQuery}`;
+        fetch(movieUrl)
+          .then(async response => {
+            if (!response.ok) throw new Error(await response.text());
+            return response.blob();
+          })
+          .then(blob => {
+            const objectUrl = URL.createObjectURL(blob);
+            const player = document.getElementById("movie-player");
+            const outputPanel = document.getElementById("movie-output-panel");
+            const downloadLink = document.getElementById("download-rendered-movie");
+            if (player.dataset.objectUrl) URL.revokeObjectURL(player.dataset.objectUrl);
+            player.dataset.objectUrl = objectUrl;
+            player.src = objectUrl;
+            player.style.display = playOnComplete ? "block" : "none";
+            downloadLink.href = objectUrl;
+            downloadLink.download = `SURF_${tag}_movie.gif`;
+            outputPanel.classList.remove("hidden");
+            movieStatus.textContent = "Movie rendering complete.";
+            finishTask(button, "Movie Ready");
+          })
+          .catch(error => {
+            movieStatus.textContent = `Movie generation failed: ${error.message}`;
+            failTask(button);
+          });
+        return;
+        const query = new URLSearchParams({
+          tag: document.getElementById("movie-tag").value,
+          duration: document.getElementById("movie-duration").value,
+          fps: document.getElementById("movie-fps").value,
+          plot_hcs: document.getElementById("movie-hcs").checked ? "1" : "0",
+          trace_earth: document.getElementById("movie-earth").checked ? "1" : "0",
+          plot_rmax: document.getElementById("movie-limit-rmax").checked
+            ? document.getElementById("movie-rmax").value : "",
+          field: document.getElementById("movie-ts-field").value
+        });
+        document.getElementById("product-status").textContent =
+          "Generating movie; the download will begin when rendering finishes…";
+        window.location.href = `${runBase}/movie/${kind}.gif?${query}`;
+      }
+    </script>
+  {% endif %}
+  {% if code %}
+    <dialog id="generated-code-dialog">
+      <div class="p-5 sm:p-7">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="m-0">Generated Code</h2>
+          <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Close</button>
+        </div>
+        <pre>{{ code }}</pre>
+      </div>
+    </dialog>
+  {% endif %}
+  <script>
+    const terminalOutputButton = document.getElementById("show-terminal-output");
+    const terminalOutputDialog = document.getElementById("terminal-output-dialog");
+    if (terminalOutputButton && terminalOutputDialog) {
+      terminalOutputButton.addEventListener("click", () => terminalOutputDialog.showModal());
+    }
+    const generatedCodeDialog = document.getElementById("generated-code-dialog");
+    const generatedCodeButton = document.getElementById("show-generated-code");
+    const generatedCodePre = generatedCodeDialog ? generatedCodeDialog.querySelector("pre") : null;
+    const baseGeneratedCodeText = generatedCodePre ? generatedCodePre.textContent : "";
+    const plotCodeHistory = [];
+
+    function pyBool(value) {
+      return value ? "True" : "False";
+    }
+
+    function refreshGeneratedCodeDialog() {
+      if (!generatedCodePre) return;
+      let codeText = baseGeneratedCodeText;
+      if (plotCodeHistory.length) {
+        codeText +=
+          "\n\n# Plotting code run from the GUI\n" +
+          "import matplotlib.pyplot as plt\n" +
+          "import surf.surf_analysis as sa\n\n" +
+          plotCodeHistory.join("\n\n") +
+          "\n";
+      }
+      generatedCodePre.textContent = codeText;
+    }
+
+    function recordPlotCode(codeText) {
+      plotCodeHistory.push(codeText.trim());
+      refreshGeneratedCodeDialog();
+    }
+
+    function buildPlotCode(kind) {
+      if (kind === "map") {
+        const timeValue = document.getElementById("plot-time").value;
+        const minimal = pyBool(document.getElementById("map-minimal").checked);
+        const plotHcs = pyBool(document.getElementById("map-hcs").checked);
+        const annotate = pyBool(document.getElementById("map-annotate").checked);
+        const traceEarth = pyBool(document.getElementById("map-earth").checked);
+        const plotRmax = document.getElementById("map-limit-rmax").checked
+          ? document.getElementById("map-rmax").value
+          : "None";
+        const solver = document.querySelector('[name="solver"]').value.trim().toLowerCase();
+        if (solver === "huxt") {
+          return [
+            "# Plot a two-dimensional map at the selected model time.",
+            "sa.plot(",
+            "    model,",
+            `    ${Number(timeValue).toFixed(1)} * u.day,`,
+            `    minimalplot=${minimal},`,
+            `    plotHCS=${plotHcs},`,
+            `    annotateplot=${annotate},`,
+            `    trace_earth_connection=${traceEarth},`,
+            `    plot_rmax=${plotRmax},`,
+            ")",
+            "plt.show()",
+          ].join("\n");
+        }
+        return [
+          "# Plot a two-dimensional compressible-model map.",
+          "sa.plot_compressible(",
+          "    model,",
+          `    ${Number(timeValue).toFixed(1)} * u.day,`,
+          `    minimalplot=${minimal},`,
+          `    annotateplot=${annotate},`,
+          `    plot_rmax=${plotRmax},`,
+          `    plotHCS=${plotHcs},`,
+          ")",
+          "plt.show()",
+        ].join("\n");
+      }
+      if (kind === "radial") {
+        const radialTime = document.getElementById("radial-time").value;
+        const radialLon = document.getElementById("radial-lon").value;
+        return [
+          "# Plot variables along a radial line at fixed longitude.",
+          "sa.plot_radial(",
+          "    model,",
+          `    ${Number(radialTime).toFixed(1)} * u.day,`,
+          `    lon=${Number(radialLon).toFixed(1)} * u.deg,`,
+          ")",
+          "plt.show()",
+        ].join("\n");
+      }
+      if (kind === "timeseries") {
+        const observer = document.getElementById("timeseries-observer").value;
+        if (observer === "custom") {
+          const radius = document.getElementById("plot-radius").value;
+          const lon = document.getElementById("timeseries-lon").value;
+          return [
+            "# Plot a time series at a fixed radius and longitude.",
+            "sa.plot_timeseries(",
+            "    model,",
+            `    ${Number(radius).toFixed(1)} * u.AU,`,
+            `    lon=${Number(lon).toFixed(1)} * u.deg,`,
+            ")",
+            "plt.show()",
+          ].join("\n");
+        }
+        return [
+          "# Sample the moving observer and plot the available model variables.",
+          `time_series = sa.get_observer_timeseries(model, observer=${JSON.stringify(observer)})`,
+          "# Use the downloaded observer series to generate the time-series plot.",
+          "plt.show()",
+        ].join("\n");
+      }
+      return "";
+    }
+
+    function showGeneratedCodeDialog() {
+      refreshGeneratedCodeDialog();
+      if (generatedCodeDialog) generatedCodeDialog.showModal();
+    }
+
+    if (generatedCodeButton && generatedCodeDialog) {
+      generatedCodeButton.addEventListener("click", showGeneratedCodeDialog);
+    }
+    {% if show_code_dialog %}
+    refreshGeneratedCodeDialog();
+    if (generatedCodeDialog) generatedCodeDialog.showModal();
+    {% endif %}
+
+    const ambientSourceInput = document.getElementById("ambient-source");
+    const sourcePanels = [...document.querySelectorAll("[data-source-panel]")];
+    const ambientTabButtons = [...document.querySelectorAll("[data-ambient-tab]")];
+
+    function clearAmbientPreview() {
+      const output = document.getElementById("ambient-plot-output");
+      const image = document.getElementById("ambient-plot-image");
+      const status = document.getElementById("ambient-product-status");
+      if (image && image.dataset.objectUrl) {
+        URL.revokeObjectURL(image.dataset.objectUrl);
+        delete image.dataset.objectUrl;
+      }
+      if (image) {
+        image.removeAttribute("src");
+        image.style.display = "none";
+      }
+      if (status) {
+        status.textContent = "Choose MAS, WSA, WSA (ISWA), or CorTom and click Plot.";
+      }
+      if (output) {
+        output.classList.add("hidden");
+      }
+    }
+
+    function showAmbientPanel(source) {
+      clearAmbientPreview();
+      ambientSourceInput.value = source;
+      sourcePanels.forEach(panel => {
+        panel.classList.toggle("active", panel.dataset.sourcePanel === source);
+      });
+      ambientTabButtons.forEach(button => {
+        button.classList.toggle("active", button.dataset.ambientTab === source);
+      });
+    }
+    ambientTabButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        showAmbientPanel(button.dataset.ambientTab);
+        invalidateCompletedRun();
+      });
+    });
+    showAmbientPanel("wsa_iswa");
+
+    const speedProfileText = document.getElementById("speed-profile");
+    const speedSliderContainer = document.getElementById("speed-profile-sliders");
+    let speedProfile = Array(128).fill(400);
+    function renderSpeedProfile() {
+      speedProfileText.value = speedProfile.join(",");
+      speedSliderContainer.innerHTML = "";
+      speedProfile.forEach((speed, index) => {
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = "250";
+        slider.max = "750";
+        slider.value = String(speed);
+        slider.className = "speed-slider";
+        slider.title = `${Math.round(index * 360 / 128)}°: ${speed} km/s`;
+        slider.addEventListener("input", () => {
+          speedProfile[index] = Number(slider.value);
+          speedProfileText.value = speedProfile.join(",");
+          slider.title = `${Math.round(index * 360 / 128)}°: ${slider.value} km/s`;
+        });
+        speedSliderContainer.appendChild(slider);
+      });
+    }
+    function smoothSpeedProfile() {
+      speedProfile = speedProfile.map((_, index) => {
+        const values = [-2, -1, 0, 1, 2].map(offset =>
+          speedProfile[(index + offset + speedProfile.length) % speedProfile.length]
+        );
+        return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+      });
+      renderSpeedProfile();
+    }
+    document.getElementById("reset-speed-profile").addEventListener("click", () => {
+      speedProfile = Array(128).fill(400);
+      renderSpeedProfile();
+    });
+    document.getElementById("smooth-speed-profile").addEventListener("click", smoothSpeedProfile);
+    document.getElementById("randomise-speed-profile").addEventListener("click", () => {
+      speedProfile = Array.from({length: 128}, () => 250 + Math.round(Math.random() * 500));
+      smoothSpeedProfile();
+    });
+    renderSpeedProfile();
+
+    function showAmbientPlot(button) {
+      const image = document.getElementById("ambient-plot-image");
+      const status = document.getElementById("ambient-product-status");
+      const form = document.querySelector('form[method="post"]');
+      if (!form) {
+        status.textContent = "Open the run form before plotting ambient inputs.";
+        return;
+      }
+      if (button) {
+        button.dataset.idleText = button.textContent;
+        button.disabled = true;
+        button.classList.remove("success-button");
+        button.classList.add("busy-button");
+        button.textContent = "Generating plot...";
+      }
+      status.textContent = "Generating plot...";
+      fetch(`{{ url_for("ambient_plot") }}`, {
+        method: "POST",
+        body: new FormData(form)
+      })
+        .then(async response => {
+          if (!response.ok) {
+            const message = (await response.text()).replace(/<[^>]+>/g, " ").trim();
+            throw new Error(message || `HTTP ${response.status}`);
+          }
+          return response.blob();
+        })
+        .then(blob => {
+          if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
+          image.dataset.objectUrl = URL.createObjectURL(blob);
+          image.src = image.dataset.objectUrl;
+          image.style.display = "block";
+          image.style.maxHeight = "85vh";
+          image.style.objectFit = "contain";
+          document.getElementById("ambient-plot-output")?.classList.remove("hidden");
+          status.textContent = "";
+          if (button) {
+            button.disabled = false;
+            button.classList.remove("busy-button");
+            button.classList.add("success-button");
+            button.textContent = "Plot Ready";
+            window.setTimeout(() => {
+              button.classList.remove("success-button");
+              button.textContent = button.dataset.idleText || button.textContent;
+            }, 1800);
+          }
+        })
+        .catch(error => {
+          status.textContent = `Plot generation failed: ${error.message}`;
+          if (button) {
+            button.disabled = false;
+            button.classList.remove("busy-button", "success-button");
+            button.textContent = button.dataset.idleText || button.textContent;
+          }
+        });
+    }
+
+    const cmes = [];
+    const cmeJson = document.getElementById("cmes-json");
+    const cmeList = document.getElementById("cme-list");
+    const removeSelectedCme = document.getElementById("remove-selected-cme");
+    const editSelectedCme = document.getElementById("edit-selected-cme");
+    const cmeEditor = document.getElementById("cme-editor");
+    const grabDonkiAtRunStart = document.querySelector(
+      '[name="grab_donki_at_run_start"]'
+    );
+    const modelInnerBoundary = document.getElementById("model-rmin");
+    function disableDonkiForNonStandardInnerBoundary() {
+      if (Math.abs(Number(modelInnerBoundary.value) - 21.5) > 1e-9) {
+        grabDonkiAtRunStart.checked = false;
+      }
+    }
+    modelInnerBoundary.addEventListener(
+      "input", disableDonkiForNonStandardInnerBoundary
+    );
+    let selectedCmeIndex = -1;
+    let editingCmeIndex = -1;
+
+    function numberValue(id) {
+      return Number(document.getElementById(id).value);
+    }
+    function renderCmes() {
+      cmeJson.value = JSON.stringify(cmes);
+      if (selectedCmeIndex >= cmes.length) selectedCmeIndex = -1;
+      removeSelectedCme.disabled = selectedCmeIndex < 0;
+      editSelectedCme.disabled = selectedCmeIndex < 0;
+      cmeList.innerHTML = cmes.length ? "" : '<p id="empty-cme-list">No CMEs added.</p>';
+      cmes.forEach((cme, index) => {
+        const row = document.createElement("div");
+        row.className = "cursor-pointer rounded-lg border bg-white p-3 transition";
+        row.classList.add(index === selectedCmeIndex ? "border-cyan-500" : "border-slate-200");
+        const outsideRun = Number(cme.t_launch_day) < 0 ||
+          Number(cme.t_launch_day) > Number(document.querySelector('[name="simtime_days"]').value);
+        if (outsideRun) row.classList.add("text-red-700");
+        row.innerHTML = `<span>${String(index + 1).padStart(2, "0")}: t=${cme.t_launch_day} day, ` +
+          `lon=${cme.longitude}°, lat=${cme.latitude}°, v=${cme.speed} km/s, width=${cme.width}°</span>`;
+        row.addEventListener("click", () => {
+          selectedCmeIndex = index === selectedCmeIndex ? -1 : index;
+          renderCmes();
+        });
+        row.addEventListener("dblclick", () => openCmeEditor(index));
+        cmeList.appendChild(row);
+      });
+    }
+    function cmeFromEditor() {
+      return {
+        longitude: numberValue("cme-longitude"),
+        latitude: numberValue("cme-latitude"),
+        speed: numberValue("cme-speed"),
+        width: numberValue("cme-width"),
+        t_launch_day: numberValue("cme-launch-day"),
+        t_launch_datetime: document.getElementById("cme-launch-datetime").value.replace("T", " "),
+        thickness_rs: numberValue("cme-thickness"),
+        initial_height_rs: numberValue("cme-initial-height"),
+        cme_expansion: document.getElementById("cme-expansion").checked,
+        cme_fixed_duration: document.getElementById("cme-fixed-duration").checked,
+        fixed_duration_hr: numberValue("cme-duration"),
+        profile_type: document.getElementById("cme-profile").value,
+        plasma_mode: document.getElementById("cme-plasma-mode").value,
+        density_fraction: numberValue("cme-density-fraction"),
+        temperature_fraction: numberValue("cme-temperature-fraction"),
+        cme_density_pcc: numberValue("cme-density"),
+        cme_temperature_k: numberValue("cme-temperature"),
+        source: "manual"
+      };
+    }
+    function openCmeEditor(index = -1) {
+      editingCmeIndex = index;
+      const cme = index >= 0 ? cmes[index] : null;
+      document.getElementById("cme-editor-title").textContent =
+        cme ? "Edit cone CME" : "Manually add cone CME";
+      document.getElementById("add-cme").textContent = cme ? "Save CME" : "Add CME";
+      if (cme) {
+        const values = {
+          "cme-longitude": cme.longitude, "cme-latitude": cme.latitude,
+          "cme-speed": cme.speed, "cme-width": cme.width,
+          "cme-launch-day": cme.t_launch_day,
+          "cme-launch-datetime": String(cme.t_launch_datetime || "").replace(" ", "T"),
+          "cme-thickness": cme.thickness_rs, "cme-initial-height": cme.initial_height_rs,
+          "cme-duration": cme.fixed_duration_hr, "cme-profile": cme.profile_type,
+          "cme-plasma-mode": cme.plasma_mode,
+          "cme-density-fraction": cme.density_fraction,
+          "cme-temperature-fraction": cme.temperature_fraction,
+          "cme-density": cme.cme_density_pcc, "cme-temperature": cme.cme_temperature_k
+        };
+        Object.entries(values).forEach(([id, value]) => {
+          if (value !== undefined && value !== null) document.getElementById(id).value = value;
+        });
+        document.getElementById("cme-expansion").checked = Boolean(cme.cme_expansion);
+        document.getElementById("cme-fixed-duration").checked = Boolean(cme.cme_fixed_duration);
+      }
+      cmeEditor.showModal();
+    }
+    document.getElementById("open-cme-editor").addEventListener("click", () => openCmeEditor());
+    editSelectedCme.addEventListener("click", () => openCmeEditor(selectedCmeIndex));
+    document.getElementById("cancel-cme-editor").addEventListener("click", () => cmeEditor.close());
+    document.getElementById("add-cme").addEventListener("click", () => {
+      const cme = cmeFromEditor();
+      if (editingCmeIndex >= 0) {
+        cmes[editingCmeIndex] = cme;
+        selectedCmeIndex = editingCmeIndex;
+      } else {
+        cmes.push(cme);
+        selectedCmeIndex = cmes.length - 1;
+      }
+      grabDonkiAtRunStart.checked = false;
+      renderCmes();
+      cmeEditor.close();
+      invalidateCompletedRun();
+    });
+    removeSelectedCme.addEventListener("click", () => {
+      if (selectedCmeIndex >= 0) cmes.splice(selectedCmeIndex, 1);
+      selectedCmeIndex = -1;
+      renderCmes();
+      invalidateCompletedRun();
+    });
+    document.getElementById("clear-cmes").addEventListener("click", () => {
+      cmes.length = 0;
+      selectedCmeIndex = -1;
+      renderCmes();
+      invalidateCompletedRun();
+    });
+    document.getElementById("choose-cone-file").addEventListener(
+      "click", () => document.getElementById("cone-file").click()
+    );
+    document.getElementById("cone-file").addEventListener("change", event => {
+      const file = event.target.files[0];
+      if (file) grabDonkiAtRunStart.checked = false;
+      document.getElementById("cone-file-status").textContent =
+        file ? `Selected ${file.name}; CMEs will load when the model is run.` : "No cone file loaded.";
+    });
+    document.getElementById("load-donki").addEventListener("click", async event => {
+      const button = event.currentTarget;
+      const status = document.getElementById("donki-status");
+      let succeeded = false;
+      button.disabled = true;
+      button.classList.add("busy-button");
+      status.textContent = "Downloading CMEs for the current run interval.";
+      button.textContent = "Loading DONKI CMEs…";
+      try {
+        const start = document.querySelector('[name="start_datetime"]').value;
+        const duration = document.querySelector('[name="simtime_days"]').value;
+        const response = await fetch(
+          `{{ url_for("donki_cmes") }}?start=${encodeURIComponent(start)}&duration=${encodeURIComponent(duration)}`
+        );
+        if (!response.ok) throw new Error(await response.text());
+        const loaded = await response.json();
+        const retained = cmes.filter(cme => cme.source !== "donki");
+        cmes.splice(0, cmes.length, ...retained, ...loaded);
+        if (loaded.length) grabDonkiAtRunStart.checked = false;
+        selectedCmeIndex = -1;
+        renderCmes();
+        status.textContent = `Loaded ${loaded.length} DONKI cone CME(s).`;
+        succeeded = true;
+        invalidateCompletedRun();
+      } catch (error) {
+        status.textContent = `Could not load DONKI CMEs: ${error.message}`;
+      } finally {
+        button.disabled = false;
+        button.classList.remove("busy-button");
+        if (succeeded) {
+          button.classList.add("success-button");
+          button.textContent = "DONKI CMEs Loaded";
+          window.setTimeout(() => {
+            button.classList.remove("success-button");
+            button.textContent = "Grab the DONKI CMEs now";
+          }, 1800);
+        } else {
+          button.textContent = "Grab the DONKI CMEs now";
+        }
+      }
+    });
+
+    const runForm = document.querySelector('form[method="post"]');
+    let runIsCurrent = {{ "true" if run_id else "false" }};
+    function invalidateCompletedRun() {
+      if (!runIsCurrent) return;
+      runIsCurrent = false;
+      const runButton = document.getElementById("run-surf-button");
+      runButton.classList.remove("success-button", "busy-button");
+      runButton.textContent = "Run SURF";
+      document.getElementById("workflow-status").textContent =
+        "Configuration changed. Run SURF again.";
+    }
+    runForm.addEventListener("input", invalidateCompletedRun);
+    runForm.addEventListener("change", invalidateCompletedRun);
+    function captureConfiguration() {
+      const controls = {};
+      runForm.querySelectorAll("input[name]:not([type=file]), select[name], textarea[name]")
+        .forEach(control => {
+          if (control.type === "radio") {
+            if (control.checked) controls[control.name] = control.value;
+          } else if (control.type === "checkbox") {
+            controls[control.name] = control.checked;
+          } else {
+            controls[control.name] = control.value;
+          }
+        });
+      return {format: "surfs-up-web-configuration", version: 1, controls, cmes};
+    }
+    function applyConfiguration(configuration, invalidateRun = true) {
+      if (!configuration || configuration.format !== "surfs-up-web-configuration") {
+        throw new Error("Not a SURFs_UP web configuration file.");
+      }
+      Object.entries(configuration.controls || {}).forEach(([name, value]) => {
+        const matches = [...runForm.querySelectorAll(`[name="${CSS.escape(name)}"]`)];
+        matches.forEach(control => {
+          if (control.type === "radio") control.checked = control.value === value;
+          else if (control.type === "checkbox") control.checked = Boolean(value);
+          else control.value = value;
+        });
+      });
+      cmes.splice(0, cmes.length, ...(configuration.cmes || []));
+      if (cmes.length) grabDonkiAtRunStart.checked = false;
+      disableDonkiForNonStandardInnerBoundary();
+      renderCmes();
+      const loadedProfile = speedProfileText.value.split(",").map(Number).filter(Number.isFinite);
+      if (loadedProfile.length === 128) {
+        speedProfile = loadedProfile;
+        renderSpeedProfile();
+      }
+      showAmbientPanel(ambientSourceInput.value || "wsa_iswa");
+      syncLongitudeControls();
+      if (invalidateRun) invalidateCompletedRun();
+    }
+    let runInProgress = false;
+    runForm.addEventListener("submit", event => {
+      sessionStorage.setItem("surfs-up-current-configuration", JSON.stringify(captureConfiguration()));
+      if (event.submitter?.value === "run") {
+        if (runInProgress) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        plotCodeHistory.length = 0;
+        refreshGeneratedCodeDialog();
+        runInProgress = true;
+        const activeTab = document.querySelector("[data-tab].active")?.dataset.tab;
+        if (activeTab) sessionStorage.setItem("surfs-up-active-tab", activeTab);
+        const runAction = document.createElement("input");
+        runAction.type = "hidden";
+        runAction.name = "action";
+        runAction.value = "run";
+        runForm.appendChild(runAction);
+        const progressId = crypto.randomUUID();
+        const progressInput = document.createElement("input");
+        progressInput.type = "hidden";
+        progressInput.name = "progress_id";
+        progressInput.value = progressId;
+        runForm.appendChild(progressInput);
+        event.submitter.disabled = true;
+        event.submitter.classList.remove("success-button");
+        event.submitter.classList.add("busy-button");
+        event.submitter.textContent = "Running SURF...";
+        const workflowStatus = document.getElementById("workflow-status");
+        workflowStatus.textContent = "Grabbing and processing input data";
+        window.setInterval(async () => {
+          try {
+            const response = await fetch(`/run-progress/${progressId}`);
+            if (response.ok) {
+              const progress = await response.json();
+              if (progress.message) workflowStatus.textContent = progress.message;
+            }
+          } catch (_) {}
+        }, 250);
+        window.setTimeout(() => HTMLFormElement.prototype.submit.call(runForm), 60);
+      }
+    });
+    const retainedConfiguration = sessionStorage.getItem("surfs-up-current-configuration");
+    if (retainedConfiguration) {
+      try { applyConfiguration(JSON.parse(retainedConfiguration), false); } catch (_) {}
+    }
+    document.getElementById("save-configuration").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify(captureConfiguration(), null, 2)], {type: "application/json"});
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "surf_configuration.json";
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+    const configurationFile = document.getElementById("configuration-file");
+    document.getElementById("load-configuration").addEventListener("click", () => configurationFile.click());
+    configurationFile.addEventListener("change", async () => {
+      try {
+        applyConfiguration(JSON.parse(await configurationFile.files[0].text()));
+        sessionStorage.removeItem("surfs-up-current-configuration");
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    const modelStartInput = document.getElementById("model-start-datetime");
+    const modelCrNumber = document.getElementById("model-cr-number");
+    const modelCrLongitude = document.getElementById("model-cr-longitude");
+    const modelLatitude = document.getElementById("model-latitude");
+    const modelIs1D = document.getElementById("model-is-1d");
+    const modelLongitudeRow = document.getElementById("model-longitude-row");
+    const modelLongitudeStart = document.querySelector('[name="lon_min"]');
+    const modelLongitudeStop = document.querySelector('[name="lon_max"]');
+    const cmeLaunchDay = document.getElementById("cme-launch-day");
+    const cmeLaunchDatetime = document.getElementById("cme-launch-datetime");
+
+    function utcInputDate(input) {
+      return new Date(`${input.value}Z`);
+    }
+    function syncCmeDatetimeFromDay() {
+      const launch = utcInputDate(modelStartInput);
+      launch.setTime(launch.getTime() + Number(cmeLaunchDay.value) * 86400000);
+      cmeLaunchDatetime.value = launch.toISOString().slice(0, 19);
+    }
+    function syncCmeDayFromDatetime() {
+      const offset = (
+        utcInputDate(cmeLaunchDatetime) - utcInputDate(modelStartInput)
+      ) / 86400000;
+      if (Number.isFinite(offset)) cmeLaunchDay.value = offset.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    }
+    function syncLongitudeControls() {
+      const disabled = Boolean(modelIs1D && modelIs1D.checked);
+      [modelLongitudeStart, modelLongitudeStop].forEach(input => {
+        if (input) input.disabled = disabled;
+      });
+      if (modelLongitudeRow) {
+        modelLongitudeRow.classList.toggle("opacity-50", disabled);
+        modelLongitudeRow.classList.toggle("pointer-events-none", disabled);
+      }
+    }
+    async function updateCoordinates(parameters) {
+      const response = await fetch(`{{ url_for("model_coordinates") }}?${new URLSearchParams(parameters)}`);
+      if (!response.ok) throw new Error(await response.text());
+      const coordinates = await response.json();
+      modelStartInput.value = coordinates.datetime;
+      modelCrNumber.value = coordinates.cr_num;
+      modelCrLongitude.value = coordinates.cr_lon.toFixed(2);
+      modelLatitude.value = coordinates.earth_latitude.toFixed(2);
+      syncCmeDatetimeFromDay();
+      clearStaleDonkiCmes();
+    }
+    function clearStaleDonkiCmes() {
+      const retained = cmes.filter(cme => cme.source !== "donki");
+      if (retained.length === cmes.length) return;
+      cmes.splice(0, cmes.length, ...retained);
+      selectedCmeIndex = -1;
+      renderCmes();
+      document.getElementById("donki-status").textContent =
+        "Run interval changed; reload the cone CME list from DONKI.";
+    }
+    modelStartInput.addEventListener("change", () => {
+      updateCoordinates({datetime: modelStartInput.value}).catch(console.error);
+    });
+    [modelCrNumber, modelCrLongitude].forEach(input => {
+      input.addEventListener("change", () => {
+        updateCoordinates({
+          cr_num: modelCrNumber.value,
+          cr_lon: modelCrLongitude.value
+        }).catch(console.error);
+      });
+    });
+    if (modelIs1D) {
+      modelIs1D.addEventListener("change", syncLongitudeControls);
+      syncLongitudeControls();
+    }
+    cmeLaunchDay.addEventListener("change", syncCmeDatetimeFromDay);
+    cmeLaunchDatetime.addEventListener("change", syncCmeDayFromDatetime);
+    syncCmeDatetimeFromDay();
+
+    const modelInnerRadius = document.querySelector('[name="rmin"]');
+    const cmeInitialHeight = document.getElementById("cme-initial-height");
+    function syncCmeInitialHeightStyle() {
+      const differs = Math.abs(
+        Number(cmeInitialHeight.value) - Number(modelInnerRadius.value)
+      ) > 1e-6;
+      cmeInitialHeight.classList.toggle("border-red-500", differs);
+      cmeInitialHeight.classList.toggle("text-red-700", differs);
+      cmeInitialHeight.title = differs
+        ? "CME initial height differs from model inner boundary."
+        : "";
+    }
+    modelInnerRadius.addEventListener("change", syncCmeInitialHeightStyle);
+    cmeInitialHeight.addEventListener("change", syncCmeInitialHeightStyle);
+    syncCmeInitialHeightStyle();
+
+    const masCrNumber = document.getElementById("mas-cr-number");
+    const masUseMapTime = document.getElementById("mas-use-map-time");
+    function applyMasMapTime() {
+      if (!masUseMapTime.checked) return;
+      updateCoordinates({cr_num: masCrNumber.value, cr_lon: 360}).catch(console.error);
+    }
+    masCrNumber.addEventListener("change", applyMasMapTime);
+    masUseMapTime.addEventListener("change", applyMasMapTime);
+
+    async function syncFileMapTime(source, fileInputId, statusId, useMapTimeId) {
+      const fileInput = document.getElementById(fileInputId);
+      const status = document.getElementById(statusId);
+      const useMapTime = document.getElementById(useMapTimeId);
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      if (!file) {
+        if (status) status.textContent = "No file selected.";
+        return;
+      }
+      if (status) status.textContent = `Reading ${file.name}...`;
+      if (!useMapTime || !useMapTime.checked) {
+        if (status) status.textContent = `Selected ${file.name}; map time not applied to model start.`;
+        return;
+      }
+      const formData = new FormData();
+      formData.append("source", source);
+      formData.append("file", file);
+      const response = await fetch(`{{ url_for("ambient_file_time") }}`, {
+        method: "POST",
+        body: formData
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const payload = await response.json();
+      if (payload.datetime) {
+        modelStartInput.value = payload.datetime;
+        modelStartInput.dispatchEvent(new Event("change", {bubbles: true}));
+        if (status) status.textContent = `Selected ${file.name}; run start time updated from map time.`;
+      } else if (status) {
+        status.textContent = `Selected ${file.name}; map time not found.`;
+      }
+    }
+
+    const wsaFileInput = document.getElementById("wsa-file");
+    const wsaUseMapTime = document.getElementById("wsa-use-map-time");
+    if (wsaFileInput) {
+      wsaFileInput.addEventListener("change", () => {
+        syncFileMapTime("wsa", "wsa-file", "wsa-file-status", "wsa-use-map-time")
+          .catch(error => {
+            const status = document.getElementById("wsa-file-status");
+            if (status) status.textContent = `Could not read WSA map time: ${error.message}`;
+          });
+      });
+    }
+    if (wsaUseMapTime) {
+      wsaUseMapTime.addEventListener("change", () => {
+        syncFileMapTime("wsa", "wsa-file", "wsa-file-status", "wsa-use-map-time")
+          .catch(error => {
+            const status = document.getElementById("wsa-file-status");
+            if (status) status.textContent = `Could not read WSA map time: ${error.message}`;
+          });
+      });
+    }
+
+    const cortomFileInput = document.getElementById("cortom-file");
+    const cortomUseMapTime = document.getElementById("cortom-use-map-time");
+    if (cortomFileInput) {
+      cortomFileInput.addEventListener("change", () => {
+        syncFileMapTime("cortom", "cortom-file", "cortom-file-status", "cortom-use-map-time")
+          .catch(error => {
+            const status = document.getElementById("cortom-file-status");
+            if (status) status.textContent = `Could not read CorTom map time: ${error.message}`;
+          });
+      });
+    }
+    if (cortomUseMapTime) {
+      cortomUseMapTime.addEventListener("change", () => {
+        syncFileMapTime("cortom", "cortom-file", "cortom-file-status", "cortom-use-map-time")
+          .catch(error => {
+            const status = document.getElementById("cortom-file-status");
+            if (status) status.textContent = `Could not read CorTom map time: ${error.message}`;
+          });
+      });
+    }
+
+    document.querySelector('[name="simtime_days"]').addEventListener("change", () => {
+      clearStaleDonkiCmes();
+      renderCmes();
+    });
+
+    [
+      ["map-limit-rmax", "map-rmax"],
+      ["movie-limit-rmax", "movie-rmax"],
+      ["movie-ts-limit-rmax", "movie-ts-rmax"]
+    ].forEach(([toggle, field]) => {
+      const checkbox = document.getElementById(toggle);
+      if (checkbox) checkbox.addEventListener("change", () => {
+        document.getElementById(field).disabled = !checkbox.checked;
+      });
+    });
+
+    const timeseriesObserver = document.getElementById("timeseries-observer");
+    const customTimeseriesCoordinates = document.getElementById("timeseries-custom-coordinates");
+    function syncTimeseriesLocation() {
+      const custom = timeseriesObserver && timeseriesObserver.value === "custom";
+      if (customTimeseriesCoordinates) {
+        customTimeseriesCoordinates.classList.toggle("hidden", !custom);
+        customTimeseriesCoordinates.classList.toggle("grid", custom);
+      }
+    }
+    if (timeseriesObserver) {
+      timeseriesObserver.addEventListener("change", syncTimeseriesLocation);
+      syncTimeseriesLocation();
+    }
+    const clearTimeseriesCsv = document.getElementById("clear-timeseries-csv");
+    if (clearTimeseriesCsv) {
+      clearTimeseriesCsv.addEventListener("click", () => {
+        document.getElementById("timeseries-csv-output").value = "";
+      });
+    }
+
+    const tabButtons = [...document.querySelectorAll("[data-tab]")];
+    const tabPanels = [...document.querySelectorAll("[data-panel]")];
+
+    function activateTab(name, updateHash = true) {
+      const button = tabButtons.find(item => item.dataset.tab === name);
+      if (!button || button.disabled) return;
+
+      tabButtons.forEach(item => {
+        const selected = item.dataset.tab === name;
+        item.classList.toggle("active", selected);
+        item.setAttribute("aria-selected", String(selected));
+      });
+      tabPanels.forEach(panel => {
+        panel.classList.toggle("active", panel.dataset.panel === name);
+      });
+      if (updateHash) history.replaceState(null, "", `#${name}`);
+    }
+
+    tabButtons.forEach(button => {
+      button.addEventListener("click", () => activateTab(button.dataset.tab));
+    });
+
+    document.querySelectorAll("[data-inner-tabs]").forEach(tabGroup => {
+      const buttons = [...tabGroup.querySelectorAll("[data-inner-tab]")];
+      const container = tabGroup.parentElement;
+      buttons.forEach(button => {
+        button.addEventListener("click", () => {
+          buttons.forEach(item => item.classList.toggle("active", item === button));
+          container.querySelectorAll("[data-inner-panel]").forEach(panel => {
+            panel.classList.toggle(
+              "active",
+              panel.dataset.innerPanel === button.dataset.innerTab
+            );
+          });
+        });
+      });
+    });
+
+    const requestedTab = window.location.hash.slice(1);
+    const retainedTab = sessionStorage.getItem("surfs-up-active-tab");
+    sessionStorage.removeItem("surfs-up-active-tab");
+    const defaultTab = requestedTab || retainedTab || "model";
+    activateTab(defaultTab, false);
+
+    const oneDimensionalToggle = document.querySelector('[name="is_1d"]');
+    const solverSelect = document.querySelector('[name="solver"]');
+    const frameSelect = document.querySelector('[name="frame"]');
+    const streakToggle = document.querySelector('[name="streak_lines_enabled"]');
+    const streakSpacing = document.querySelector('[name="streak_spacing_deg"]');
+    function syncModelDependentControls() {
+      const mapControls = document.getElementById("map-controls");
+      if (mapControls) mapControls.disabled = oneDimensionalToggle.checked;
+      const mapTabButton = document.querySelector('[data-inner-tab="map-product"]');
+      const radialTabButton = document.querySelector('[data-inner-tab="radial-product"]');
+      if (mapTabButton) mapTabButton.disabled = oneDimensionalToggle.checked;
+      document.querySelector('[name="lon_min"]').disabled = oneDimensionalToggle.checked;
+      document.querySelector('[name="lon_max"]').disabled = oneDimensionalToggle.checked;
+      frameSelect.value = oneDimensionalToggle.checked ? "synodic" : "sidereal";
+      streakSpacing.disabled = !streakToggle.checked;
+      const fieldSelect = document.getElementById("movie-ts-field");
+      if (fieldSelect) {
+        [...fieldSelect.options].forEach(option => {
+          option.disabled = solverSelect.value === "huxt" && option.value !== "V";
+        });
+        if (solverSelect.value === "huxt") fieldSelect.value = "V";
+      }
+    }
+    oneDimensionalToggle.addEventListener("change", syncModelDependentControls);
+    solverSelect.addEventListener("change", syncModelDependentControls);
+    streakToggle.addEventListener("change", syncModelDependentControls);
+    syncModelDependentControls();
+  </script>
+  </main>
+</body>
+</html>
