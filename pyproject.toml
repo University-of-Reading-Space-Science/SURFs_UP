@@ -12,7 +12,7 @@ dependencies = [
   "astropy>=7.1.0",
   "matplotlib>=3.10.6",
   "numpy>=2.2.6",
-  "sunpy>=7.0.1",
+  "sunpy[net,timeseries,visualization]>=7.0.1",
   "surf>=1.0.0",
 ]
 
