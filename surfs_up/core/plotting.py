@@ -9,6 +9,8 @@ import numpy as np
 
 
 CME_COLORS = ["r", "c", "m", "y", "deeppink", "darkorange"]
+SPEED_LIMITS_KMS = (300, 900)
+TIMESERIES_FIGSIZE = (10, 6.25)
 
 
 def _cme_coords_at_time(cme, time_index: int):
@@ -50,6 +52,11 @@ def _solver_label(model):
     return f"SURF-{solver}" if getattr(model, "compressible", False) else "SURF-HUXt"
 
 
+def timeseries_figsize():
+    """Return the standard figure size for all time-series plots."""
+    return TIMESERIES_FIGSIZE
+
+
 def sample_custom_timeseries(model, radius, lon):
     """Sample model grids at the nearest custom radius and longitude."""
     radial_index = int(np.argmin(np.abs(model.r - radius)))
@@ -87,13 +94,12 @@ def plot_custom_timeseries(model, radius, lon):
     is_compressible = getattr(model, "compressible", False)
 
     n_panels = 1 + int(has_bpol) + (2 if is_compressible else 0)
-    fig_size = (12, 7.5) if is_compressible else (8.8, 5.8)
-    fig, axes = plt.subplots(n_panels, 1, figsize=fig_size, sharex=True)
+    fig, axes = plt.subplots(n_panels, 1, figsize=timeseries_figsize(), sharex=True)
     axes = np.atleast_1d(axes)
 
     panel_index = 0
     axes[panel_index].plot(times, speed, "r", label=_solver_label(model))
-    axes[panel_index].set_ylim(250, 1000)
+    axes[panel_index].set_ylim(*SPEED_LIMITS_KMS)
     axes[panel_index].set_ylabel("V [km/s]")
 
     if has_bpol:
@@ -172,7 +178,7 @@ def plot_radial(model, time, lon, save: bool = False, tag: str = ""):
         lon_out = model.lon[lon_index].to(u.deg).value
 
     ax.plot(model.r, model.v_grid[time_index, :, lon_index], "k-")
-    ax.set_ylim(200, 1000)
+    ax.set_ylim(*SPEED_LIMITS_KMS)
 
     for cme_index, cme in enumerate(getattr(model, "cmes", [])):
         coords = _cme_coords_at_time(cme, time_index)

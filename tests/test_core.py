@@ -15,6 +15,7 @@ from surfs_up.core import (
     plot_radial,
     run_generated_code,
     sample_custom_timeseries,
+    timeseries_figsize,
 )
 
 
@@ -106,6 +107,7 @@ def test_radial_plot_skips_cme_without_selected_time_coordinates():
 
     assert fig is not None
     assert ax.lines
+    assert ax.get_ylim() == (300.0, 900.0)
     plt.close(fig)
 
 
@@ -130,7 +132,9 @@ def test_custom_timeseries_plots_bpol_when_grid_is_available():
 
     assert "bpol" in series
     assert "time" in series
+    assert tuple(fig.get_size_inches()) == timeseries_figsize()
     assert len(axes) == 2
+    assert axes[0].get_ylim() == (300.0, 900.0)
     assert axes[1].get_ylabel() == r"B$_{\text{POL}}$"
     assert axes[-1].get_xlabel() == "DD-MM of 2026"
     plt.close(fig)

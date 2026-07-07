@@ -64,6 +64,7 @@ from surfs_up.core import (
     plot_custom_timeseries,
     plot_radial as plot_radial_profile,
     run_generated_code,
+    timeseries_figsize,
 )
 
 
@@ -255,7 +256,7 @@ class ModelParametersTab(QWidget):
 
     def __init__(self):
         super().__init__()
-        now = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=6)).replace(tzinfo=None, microsecond=0)
+        now = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=5)).replace(tzinfo=None, microsecond=0)
         cr_num, cr_lon = sin.datetime2surfinputs(now)
         earth_lat = sin.get_earth_lat(now)
 
@@ -277,8 +278,11 @@ class ModelParametersTab(QWidget):
         self.simtime_spin.setValue(5.0)
         self.solver_combo = QComboBox()
         self.solver_combo.addItems(["huxt", "hydro", "hydro-pcm"])
-        self.include_bpol_toggle = QCheckBox("Include bpol in run")
-        form.addRow("Run start date", self.start_datetime)
+        self.include_bpol_toggle = QCheckBox("Include B polarity")
+        form.addRow(
+            "Model start date (default: 5 days prior to forecast date, to allow CME propagation)",
+            self.start_datetime,
+        )
         form.addRow("CR", self.cr_num_spin)
         form.addRow("Earth Carr lon at start", self.cr_lon_init_spin)
         form.addRow("Run time", self.simtime_spin)
@@ -2879,9 +2883,10 @@ class SurfMainWindow(QMainWindow):
                     f"time_series = sa.get_observer_timeseries(model, observer={observer!r})",
                     "times = time_series['time']",
                     "speed = np.asarray(time_series.get('vsw', np.nan), dtype=float)",
-                    f"fig, axes = plt.subplots({1 + int(has_bpol) + (2 if is_compressible else 0)}, 1, sharex=True)",
+                    f"fig, axes = plt.subplots({1 + int(has_bpol) + (2 if is_compressible else 0)}, 1, figsize=(10, 6.25), sharex=True)",
                     "axes = np.atleast_1d(axes)",
                     f"axes[0].plot(times, speed, 'r', label={solver_label!r})",
+                    "axes[0].set_ylim(300, 900)",
                     "axes[0].set_ylabel('V [km/s]')",
                 ]
                 panel_code_index = 0
@@ -2930,8 +2935,7 @@ class SurfMainWindow(QMainWindow):
                     n_panels += 1
                 if is_compressible:
                     n_panels += 2
-                fig_size = (12, 7.5) if is_compressible else (8.8, 5.8)
-                fig, axes = plt.subplots(n_panels, 1, figsize=fig_size, sharex=True)
+                fig, axes = plt.subplots(n_panels, 1, figsize=timeseries_figsize(), sharex=True)
                 if n_panels == 1:
                     axes = np.array([axes])
 
@@ -2941,7 +2945,7 @@ class SurfMainWindow(QMainWindow):
 
                 panel_idx = 0
                 axes[panel_idx].plot(times, speed, "r", label=solver_label)
-                axes[panel_idx].set_ylim(250, 1000)
+                axes[panel_idx].set_ylim(300, 900)
                 axes[panel_idx].set_ylabel("V [km/s]")
 
                 if has_bpol:

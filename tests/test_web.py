@@ -120,6 +120,10 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b"Load a user-supplied Cone CME list" in response.data
     assert b"SURF's UP" in response.data
     assert b"Space-weather Utilities for Research and Forecasting" in response.data
+    assert b"Solar wind modelling via" not in response.data
+    assert b"Model start date (default: 5 days prior to forecast date, to allow CME propagation)" in response.data
+    assert b"Include B polarity" in response.data
+    assert b"Include bpol in run" not in response.data
     assert b'name="simtime_days" type="number" step="0.1" value="10"' in response.data
     assert b'id="edit-selected-cme"' in response.data
     assert b'name="track_cmes" type="checkbox"' in response.data

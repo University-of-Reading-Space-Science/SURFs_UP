@@ -28,6 +28,7 @@ from surfs_up.core import (
     plot_radial as plot_radial_profile,
     run_generated_code,
     sample_custom_timeseries,
+    timeseries_figsize,
 )
 
 _RUNS: OrderedDict[str, object] = OrderedDict()
@@ -141,7 +142,7 @@ def _model_defaults() -> dict[str, object]:
 
     today = datetime.datetime.now(datetime.UTC).replace(tzinfo=None, microsecond=0)
     now = (
-        today - datetime.timedelta(days=6)
+        today - datetime.timedelta(days=5)
     ).replace(tzinfo=None, microsecond=0)
     cr_num, cr_lon = sin.datetime2surfinputs(now)
     earth_latitude = sin.get_earth_lat(now)
@@ -946,11 +947,13 @@ def create_app(config: dict | None = None) -> Flask:
                         and np.isfinite(np.asarray(series[key], dtype=float)).any()
                     ]
                     figure, axes = plt.subplots(
-                        len(fields), 1, figsize=(10, 2.5 * len(fields)), sharex=True
+                        len(fields), 1, figsize=timeseries_figsize(), sharex=True
                     )
                     for axis, (key, label) in zip(np.atleast_1d(axes), fields):
                         axis.plot(series["time"], series[key], "r-")
                         axis.set_ylabel(label)
+                        if key == "vsw":
+                            axis.set_ylim(300, 900)
                         axis.grid(True, alpha=0.3)
                     format_datetime_axis_like_surf(
                         figure,

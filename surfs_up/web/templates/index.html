@@ -112,6 +112,16 @@
       .speed-profile-editor { @apply relative w-full max-w-4xl rounded-xl border border-slate-200 bg-white p-3 shadow-inner; }
       .speed-profile-canvas { @apply block h-64 w-full cursor-crosshair rounded-lg bg-white; touch-action: none; }
       .speed-axis-label { writing-mode: vertical-rl; transform: rotate(180deg); }
+      .brand-title {
+        font-family: "Segoe UI Variable Display", "Aptos Display", "Inter", "Segoe UI", sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        line-height: 0.95;
+      }
+      .model-start-input {
+        width: 14rem !important;
+        max-width: 100%;
+      }
     }
   </style>
 </head>
@@ -132,8 +142,8 @@
   </script>
   <header class="bg-space-950 text-white shadow-xl">
     <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <p class="mb-1 text-xs font-semibold tracking-wide text-cyan-300">Solar wind modelling via Space-weather Utilities for Research and Forecasting (SURF)'s User Panel</p>
-      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">SURF's UP</h1>
+      <p class="mb-1 text-xs font-semibold tracking-wide text-cyan-300">Space-weather Utilities for Research and Forecasting (SURF)'s User Panel</p>
+      <h1 class="brand-title text-4xl sm:text-5xl">SURF's UP</h1>
     </div>
   </header>
   <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
@@ -190,9 +200,12 @@
       <legend class="group-title px-1">Model Parameters</legend>
       <div class="grid gap-4">
         <div class="grid items-end gap-3 lg:grid-cols-[minmax(14rem,2fr)_auto_minmax(7rem,1fr)_auto_minmax(10rem,1fr)]">
-          <label>Run start date
-            <input name="start_datetime" id="model-start-datetime" type="datetime-local" step="1" value="{{ default_start }}">
-          </label>
+          <div class="grid gap-1.5">
+            <span class="whitespace-nowrap text-sm font-medium text-slate-700">Model start date (default: 5 days prior to forecast date, to allow CME propagation)</span>
+            <label><span class="sr-only">Model start date</span>
+              <input class="model-start-input" name="start_datetime" id="model-start-datetime" type="datetime-local" step="1" value="{{ default_start }}">
+            </label>
+          </div>
           <span class="pb-2 text-sm font-medium text-slate-600">CR</span>
           <label><span class="sr-only">Carrington rotation</span>
             <input name="cr_num" id="model-cr-number" type="number" value="{{ default_cr_num }}">
@@ -211,7 +224,7 @@
           <label><span class="sr-only">Solver</span>
             <select name="solver"><option value="huxt">HUXt</option><option>hydro</option><option>hydro-pcm</option></select>
           </label>
-          <label class="pb-2"><span><input name="include_bpol" type="checkbox"> Include bpol in run</span></label>
+          <label class="pb-2"><span><input name="include_bpol" type="checkbox"> Include B polarity</span></label>
         </div>
       </div>
     </fieldset>
