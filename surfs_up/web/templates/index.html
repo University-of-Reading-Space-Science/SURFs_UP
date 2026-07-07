@@ -59,13 +59,14 @@
       body { @apply min-h-screen bg-slate-100 text-slate-800 antialiased; }
       h2 { @apply col-span-full mt-3 border-b border-slate-200 pb-2 text-xl font-semibold text-slate-900; }
       label { @apply grid gap-1.5 text-sm font-medium text-slate-700; }
-      input:not([type="checkbox"]), select, textarea {
+      input:not([type="checkbox"]):not([type="radio"]), select, textarea {
         @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm
                outline-none transition focus:border-surf-500 focus:ring-3 focus:ring-cyan-100;
       }
       input[type="file"] { @apply cursor-pointer text-slate-600 file:mr-3 file:rounded-md file:border-0
                                   file:bg-cyan-50 file:px-3 file:py-1.5 file:font-medium file:text-surf-600; }
       input[type="checkbox"] { @apply size-4 rounded border-slate-300 accent-surf-600; }
+      input[type="radio"] { @apply size-4 accent-surf-600; }
       label > span { @apply flex items-center gap-2; }
       button {
         @apply cursor-pointer rounded-lg bg-surf-600 px-4 py-2.5 text-sm font-semibold text-white
@@ -96,8 +97,9 @@
       .group-box { @apply col-span-full rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5; }
       .group-title { @apply mb-4 text-base font-semibold text-slate-900; }
       .control-row { @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3; }
-      .source-choice { @apply flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200
-                              bg-white px-3 py-2 text-sm hover:border-cyan-300; }
+      .source-choice { @apply flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200
+                              bg-white px-3 py-3 text-sm hover:border-cyan-300; }
+      .source-choice input[type="radio"] { @apply mt-0.5 shrink-0; }
       .source-panel { @apply hidden; }
       .source-panel.active { @apply block; }
       .inner-tabs { @apply col-span-full mb-1 flex flex-wrap gap-1 border-b border-slate-200; }
@@ -107,7 +109,9 @@
       .product-panel.active { @apply block; }
       dialog { @apply w-[min(46rem,calc(100%-2rem))] rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl; }
       dialog::backdrop { @apply bg-slate-950/55 backdrop-blur-sm; }
-      .speed-slider { writing-mode: vertical-lr; direction: rtl; width: 5px; min-width: 5px; height: 100%; accent-color: #0e7490; }
+      .speed-profile-editor { @apply relative w-full max-w-4xl rounded-xl border border-slate-200 bg-white p-3 shadow-inner; }
+      .speed-profile-canvas { @apply block h-64 w-full cursor-crosshair rounded-lg bg-white; touch-action: none; }
+      .speed-axis-label { writing-mode: vertical-rl; transform: rotate(180deg); }
     }
   </style>
 </head>
@@ -213,7 +217,7 @@
     </fieldset>
     <fieldset class="group-box">
       <legend class="group-title px-1">Coordinate settings</legend>
-      <div class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_1fr_auto_1fr]">
+      <div class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_minmax(18rem,2fr)]">
         <span class="pb-2 text-sm font-medium text-slate-600">Model latitude (deg; defaults to Earth)</span>
         <label><span class="sr-only">Model latitude in degrees</span><input name="latitude" id="model-latitude" type="number" step="0.1" value="{{ '%.2f'|format(default_latitude) }}"></label>
         <span class="pb-2 text-sm font-medium text-slate-600">Frame</span>
@@ -261,29 +265,13 @@
     <input type="hidden" name="ambient_source" id="ambient-source" value="wsa_iswa">
     <div class="inner-tabs wide" id="ambient-source-tabs">
       {% for value, label in [
-        ("user_specified", "User specified"), ("mas", "MAS"), ("wsa", "WSA (user supplied)"),
-        ("wsa_iswa", "WSA (ISWA)"), ("insitu_backmapped", "OMNI-backmapped"),
-        ("omni", "OMNI outwards"), ("cortom", "CorTom")
+        ("mas", "MAS (PredSci)"), ("wsa_iswa", "WSA (ISWA)"),
+        ("omni_group", "OMNI"), ("user_specified_group", "User specified")
       ] %}
       <button type="button" class="inner-tab-button ambient-tab-button {% if value == 'wsa_iswa' %}active{% endif %}"
               data-ambient-tab="{{ value }}">{{ label }}</button>
       {% endfor %}
     </div>
-    <fieldset class="group-box source-panel" data-source-panel="user_specified">
-      <legend class="group-title px-1">User-specified boundary</legend>
-      <p class="mb-4 text-sm text-slate-600">Set solar-wind speed (km/s) at 128 Carrington longitudes. Changes are periodic across 0/360°.</p>
-      <div class="button-group mb-4">
-        <button type="button" class="secondary-button" id="reset-speed-profile">Reset</button>
-        <button type="button" class="secondary-button" id="smooth-speed-profile">Smooth</button>
-        <button type="button" class="secondary-button" id="randomise-speed-profile">Randomise</button>
-      </div>
-      <div class="w-full max-w-3xl">
-        <div id="speed-profile-sliders" class="flex h-36 w-full items-stretch gap-px overflow-x-auto rounded-lg border border-slate-200 bg-white p-2"></div>
-        <div class="mt-1 flex justify-between text-xs text-slate-500"><span>0°</span><span>Carrington longitude</span><span>360°</span></div>
-      </div>
-      <textarea name="speed_profile" id="speed-profile" class="hidden"></textarea>
-      <input name="speed_kms" type="hidden" value="400">
-    </fieldset>
     <fieldset class="group-box source-panel" data-source-panel="mas">
       <legend class="group-title px-1">HelioMAS boundary profile</legend>
       <div class="control-row">
@@ -293,51 +281,106 @@
       </div>
       <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot MAS input</button></div>
     </fieldset>
-    <fieldset class="group-box source-panel" data-source-panel="wsa">
-      <legend class="group-title px-1">WSA boundary file</legend>
-      <div class="control-row">
-        <label class="wide">File<input name="wsa_file" id="wsa-file" type="file" accept=".fits"></label>
-        <label><span><input name="wsa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
-        <label><span><input name="wsa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
-        <label><span><input name="wsa_use_map_time" id="wsa-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
-      </div>
-      <p class="wide text-slate-600" id="wsa-file-status">No file selected.</p>
-      <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot WSA input</button></div>
-    </fieldset>
     <fieldset class="group-box source-panel active" data-source-panel="wsa_iswa">
       <legend class="group-title px-1">WSA map from ISWA</legend>
       <div class="control-row">
-        <label>Map date<input name="iswa_map_date" type="date" value="{{ default_start[:10] }}"></label>
-        <p class="wide text-slate-600">Downloads the newest available WSA map at or before the selected map date.</p>
+        <label>Map date/time<input name="iswa_map_date" type="datetime-local" value="{{ default_iswa_map_datetime }}"></label>
+        <p class="wide text-slate-600">Downloads the newest available WSA map at or before the selected map date/time.</p>
         <label><span><input name="iswa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
         <label><span><input name="iswa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
       </div>
       <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot WSA input</button></div>
     </fieldset>
-    <fieldset class="group-box source-panel" data-source-panel="insitu_backmapped">
-      <legend class="group-title px-1">OMNI backmapped boundary</legend>
-      <label>Mode <select name="insitu_mode">
-        <option value="forecast">Forecast</option>
-        <option value="reconstruction">Reconstruction (requires 27days of data after run end time)</option>
-      </select></label>
-    </fieldset>
-    <fieldset class="group-box source-panel" data-source-panel="omni">
-      <legend class="group-title px-1">OMNI outwards boundary</legend>
-      <label><span><input name="use_215_inner_boundary" type="checkbox" checked> Set inner boundary to 215 Rs and run outwards</span></label>
-    </fieldset>
-    <fieldset class="group-box source-panel" data-source-panel="cortom">
-      <legend class="group-title px-1">CorTom boundary file</legend>
-      <div class="control-row">
-        <label class="wide">File<input name="cortom_file" id="cortom-file" type="file" accept=".dat"></label>
-        <label><span><input name="cortom_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
-        <label><span><input name="cortom_use_map_time" id="cortom-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+    <fieldset class="group-box source-panel" data-source-panel="omni_group">
+      <legend class="group-title px-1">OMNI boundary</legend>
+      <div class="grid gap-5 lg:grid-cols-2">
+        <section class="rounded-xl border border-slate-200 bg-white p-4">
+          <label class="source-choice mb-4">
+            <input type="radio" name="ambient_source_choice" value="insitu_backmapped" checked>
+            <span class="grid gap-1">
+              <span class="font-semibold text-slate-900">Backmapped boundary</span>
+              <span class="text-sm font-normal text-slate-600">Use near-Earth OMNI data to infer the inner-boundary solar wind.</span>
+            </span>
+          </label>
+          <div class="control-row">
+            <label>Mode <select name="insitu_mode">
+              <option value="forecast">Forecast</option>
+              <option value="reconstruction">Reconstruction (requires 27 days of data after run end time)</option>
+            </select></label>
+          </div>
+        </section>
+        <section class="rounded-xl border border-slate-200 bg-white p-4">
+          <label class="source-choice mb-4">
+            <input type="radio" name="ambient_source_choice" value="omni">
+            <span class="grid gap-1">
+              <span class="font-semibold text-slate-900">Outward propagation</span>
+              <span class="text-sm font-normal text-slate-600">Start from the 215 Rs OMNI boundary and run outwards.</span>
+            </span>
+          </label>
+          <label><span><input name="use_215_inner_boundary" type="checkbox" checked> Set inner boundary to 215 Rs and run outwards</span></label>
+        </section>
       </div>
-      <p class="wide text-slate-600" id="cortom-file-status">No file selected.</p>
-      <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot CorTom input</button></div>
+    </fieldset>
+    <fieldset class="group-box source-panel" data-source-panel="user_specified_group">
+      <legend class="group-title px-1">User-specified boundary</legend>
+      <div class="grid gap-5">
+        <section class="rounded-xl border border-slate-200 bg-white p-4">
+          <label class="source-choice mb-4">
+            <input type="radio" name="ambient_source_choice" value="wsa">
+            <span class="font-semibold text-slate-900">WSA (user specified)</span>
+          </label>
+          <div class="control-row">
+            <label class="wide">File<input name="wsa_file" id="wsa-file" type="file" accept=".fits"></label>
+            <label><span><input name="wsa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+            <label><span><input name="wsa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
+            <label><span><input name="wsa_use_map_time" id="wsa-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+          </div>
+          <p class="wide mt-3 text-slate-600" id="wsa-file-status">No file selected.</p>
+          <div class="mt-4"><button type="button" onclick="selectAmbientSourceAndPlot('wsa', this)">Plot WSA input</button></div>
+        </section>
+        <section class="rounded-xl border border-slate-200 bg-white p-4">
+          <label class="source-choice mb-4">
+            <input type="radio" name="ambient_source_choice" value="cortom">
+            <span class="font-semibold text-slate-900">CorTom</span>
+          </label>
+          <div class="control-row">
+            <label class="wide">File<input name="cortom_file" id="cortom-file" type="file" accept=".dat"></label>
+            <label><span><input name="cortom_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+            <label><span><input name="cortom_use_map_time" id="cortom-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+          </div>
+          <p class="wide mt-3 text-slate-600" id="cortom-file-status">No file selected.</p>
+          <div class="mt-4"><button type="button" onclick="selectAmbientSourceAndPlot('cortom', this)">Plot CorTom input</button></div>
+        </section>
+        <section class="rounded-xl border border-slate-200 bg-white p-4">
+          <label class="source-choice mb-4">
+            <input type="radio" name="ambient_source_choice" value="user_specified">
+            <span class="font-semibold text-slate-900">Line method</span>
+          </label>
+          <p class="mb-4 text-sm text-slate-600">Set solar-wind speed (km/s) at 128 Carrington longitudes. Changes are periodic across 0/360°.</p>
+          <div class="button-group mb-4">
+            <button type="button" class="secondary-button" id="reset-speed-profile">Reset</button>
+            <button type="button" class="secondary-button" id="smooth-speed-profile">Smooth</button>
+            <button type="button" class="secondary-button" id="randomise-speed-profile">Randomise</button>
+          </div>
+          <div class="speed-profile-editor">
+            <div class="flex items-stretch gap-3">
+              <div class="speed-axis-label flex items-center justify-center text-xs font-semibold text-slate-600">
+                Solar wind speed (km/s)
+              </div>
+              <div class="min-w-0 flex-1">
+                <canvas id="speed-profile-canvas" class="speed-profile-canvas" height="260"></canvas>
+            <div class="mt-1 flex justify-between text-xs text-slate-500"><span>0°</span><span>Carrington longitude</span><span>360°</span></div>
+          </div>
+            </div>
+          </div>
+          <textarea name="speed_profile" id="speed-profile" class="hidden"></textarea>
+          <input name="speed_kms" type="hidden" value="400">
+        </section>
+      </div>
     </fieldset>
     <section class="wide mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="ambient-plot-output">
       <h3 class="font-semibold text-slate-900">Ambient input preview</h3>
-      <p class="mt-2 text-sm font-medium text-surf-600" id="ambient-product-status">Choose MAS, WSA, WSA (ISWA), or CorTom and click Plot.</p>
+      <p class="mt-2 text-sm font-medium text-surf-600" id="ambient-product-status">Choose an ambient source and click Plot.</p>
       <img class="mt-4 hidden w-full rounded-xl border border-slate-200 bg-white shadow-sm"
            id="ambient-plot-image" alt="Selected ambient input plot" style="max-height: 90vh; object-fit: contain;">
     </section>
@@ -431,26 +474,26 @@
           <button type="button" class="inner-tab-button" data-inner-tab="radial-product">Radial Profile</button>
           <button type="button" class="inner-tab-button" data-inner-tab="timeseries-product">Time Series</button>
         </div>
-        <fieldset class="group-box product-panel active" id="map-controls" data-inner-panel="map-product">
-          <legend class="group-title px-1">2D Map (sa.plot)</legend>
+        <section class="product-panel active wide" id="map-controls" data-inner-panel="map-product">
+          <h3 class="sr-only">2D Map (sa.plot)</h3>
           <div class="grid max-w-2xl gap-3">
             <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time (days)
               <input id="plot-time" type="number" min="0" max="1000" step="0.1" value="1.5">
             </label>
-            <label><span><input id="map-minimal" type="checkbox"> Minimal plot</span></label>
-            <label><span><input id="map-hcs" type="checkbox" checked> Plot HCS</span></label>
-            <label><span><input id="map-annotate" type="checkbox" checked> Annotate plot</span></label>
-            <label><span><input id="map-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label><span><input id="map-minimal" type="checkbox"> Minimal plot</span></label>
+              <label><span><input id="map-hcs" type="checkbox" checked> Plot HCS</span></label>
+              <label><span><input id="map-annotate" type="checkbox" checked> Annotate plot</span></label>
+              <label><span><input id="map-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
               <label><span><input id="map-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
               <input class="max-w-40" aria-label="Outer radius in solar radii" id="map-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
             </div>
             <div><button type="button" onclick="showPlot('map', this)">Plot 2D Map</button></div>
           </div>
-        </fieldset>
-        <fieldset class="group-box product-panel" data-inner-panel="radial-product">
-          <legend class="group-title px-1">Radial Profile (sa.plot_radial)</legend>
+        </section>
+        <section class="product-panel wide" data-inner-panel="radial-product">
+          <h3 class="sr-only">Radial Profile (sa.plot_radial)</h3>
           <div class="grid max-w-2xl gap-3">
             <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time (days)
               <input id="radial-time" type="number" min="0" max="1000" step="0.1" value="1.5">
@@ -460,9 +503,9 @@
             </label>
             <div><button type="button" onclick="showPlot('radial', this)">Plot Radial Profile</button></div>
           </div>
-        </fieldset>
-        <fieldset class="group-box product-panel" data-inner-panel="timeseries-product">
-          <legend class="group-title px-1">Time Series (sa.plot_timeseries)</legend>
+        </section>
+        <section class="product-panel wide" data-inner-panel="timeseries-product">
+          <h3 class="sr-only">Time Series (sa.plot_timeseries)</h3>
           <div class="grid max-w-3xl gap-3">
             <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Location <select id="timeseries-observer">
               {% for value, label in [("Earth","Earth"),("Mercury","Mercury"),("Venus","Venus"),
@@ -487,7 +530,7 @@
               <button type="button" class="secondary-button" onclick="downloadTimeseries(this)">Export Time Series CSV</button>
             </div>
           </div>
-        </fieldset>
+        </section>
       </form>
       <section class="mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
         <h3 class="font-semibold text-slate-900">Figure output</h3>
@@ -507,8 +550,8 @@
           <button type="button" class="inner-tab-button active" data-inner-tab="map-movie">2D Movie</button>
           <button type="button" class="inner-tab-button" data-inner-tab="timeseries-movie">Movie with Time Series</button>
         </div>
-        <fieldset class="group-box product-panel active" data-inner-panel="map-movie">
-          <legend class="group-title px-1">Animation (sa.animate)</legend>
+        <section class="product-panel active wide" data-inner-panel="map-movie">
+          <h3 class="sr-only">Animation (sa.animate)</h3>
           <div class="grid max-w-4xl gap-4">
             <div class="grid gap-3 sm:grid-cols-3">
               <label>Tag<input id="movie-tag" value="gui"></label>
@@ -530,9 +573,9 @@
             <label><span><input id="movie-play" type="checkbox" checked> Play movie when complete</span></label>
             <div><button type="button" onclick="downloadMovie('map', this)">Create 2D Movie</button></div>
           </div>
-        </fieldset>
-        <fieldset class="group-box product-panel" data-inner-panel="timeseries-movie">
-          <legend class="group-title px-1">Animation with time series (sa.animate_with_ts)</legend>
+        </section>
+        <section class="product-panel wide" data-inner-panel="timeseries-movie">
+          <h3 class="sr-only">Animation with time series (sa.animate_with_ts)</h3>
           <div class="grid max-w-4xl gap-4">
             <div class="grid gap-3 sm:grid-cols-3">
               <label>Tag<input id="movie-ts-tag" value="gui"></label>
@@ -555,7 +598,7 @@
             </div>
             <div><button type="button" onclick="downloadMovie('timeseries', this)">Create Movie With Time Series</button></div>
           </div>
-        </fieldset>
+        </section>
       </form>
       <p class="mt-4 text-sm text-slate-500" id="movie-status">Rendering may take several minutes for a long simulation.</p>
       <section class="mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4"
@@ -911,33 +954,65 @@
         image.style.display = "none";
       }
       if (status) {
-        status.textContent = "Choose MAS, WSA, WSA (ISWA), or CorTom and click Plot.";
+        status.textContent = "Choose an ambient source and click Plot.";
       }
       if (output) {
         output.classList.add("hidden");
       }
     }
 
-    function showAmbientPanel(source) {
-      clearAmbientPreview();
+    function ambientPanelForSource(source) {
+      if (["wsa", "cortom", "user_specified"].includes(source)) return "user_specified_group";
+      if (["insitu_backmapped", "omni"].includes(source)) return "omni_group";
+      return source;
+    }
+
+    function defaultSourceForPanel(panel) {
+      if (panel === "user_specified_group") return "user_specified";
+      if (panel === "omni_group") return "insitu_backmapped";
+      return panel;
+    }
+
+    function setAmbientSource(source, clearPreview = true) {
+      if (clearPreview) clearAmbientPreview();
       ambientSourceInput.value = source;
+      document.querySelectorAll('[name="ambient_source_choice"]').forEach(choice => {
+        choice.checked = choice.value === source;
+      });
+    }
+
+    function showAmbientPanel(source) {
+      const panelName = ambientPanelForSource(source);
+      clearAmbientPreview();
+      setAmbientSource(source, false);
       sourcePanels.forEach(panel => {
-        panel.classList.toggle("active", panel.dataset.sourcePanel === source);
+        panel.classList.toggle("active", panel.dataset.sourcePanel === panelName);
       });
       ambientTabButtons.forEach(button => {
-        button.classList.toggle("active", button.dataset.ambientTab === source);
+        button.classList.toggle("active", button.dataset.ambientTab === panelName);
       });
+      if (panelName === "user_specified_group") {
+        requestAnimationFrame(drawSpeedProfile);
+      }
     }
     ambientTabButtons.forEach(button => {
       button.addEventListener("click", () => {
-        showAmbientPanel(button.dataset.ambientTab);
+        showAmbientPanel(defaultSourceForPanel(button.dataset.ambientTab));
+        invalidateCompletedRun();
+      });
+    });
+    document.querySelectorAll('[name="ambient_source_choice"]').forEach(choice => {
+      choice.addEventListener("change", () => {
+        if (!choice.checked) return;
+        setAmbientSource(choice.value);
         invalidateCompletedRun();
       });
     });
     showAmbientPanel("wsa_iswa");
 
     const speedProfileText = document.getElementById("speed-profile");
-    const speedSliderContainer = document.getElementById("speed-profile-sliders");
+    const speedProfileCanvas = document.getElementById("speed-profile-canvas");
+    const speedProfileContext = speedProfileCanvas ? speedProfileCanvas.getContext("2d") : null;
     let speedProfile = Array(128).fill(400);
     function renderSpeedProfile() {
       speedProfileText.value = speedProfile.join(",");
@@ -958,6 +1033,124 @@
         speedSliderContainer.appendChild(slider);
       });
     }
+    function speedCanvasGeometry() {
+      const rect = speedProfileCanvas.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(rect.width * scale));
+      const height = Math.max(1, Math.round(rect.height * scale));
+      if (speedProfileCanvas.width !== width || speedProfileCanvas.height !== height) {
+        speedProfileCanvas.width = width;
+        speedProfileCanvas.height = height;
+      }
+      return {
+        scale,
+        width,
+        height,
+        left: 44 * scale,
+        right: 14 * scale,
+        top: 14 * scale,
+        bottom: 30 * scale,
+        minSpeed: 250,
+        maxSpeed: 750
+      };
+    }
+
+    function speedToY(speed, geometry) {
+      const plotHeight = geometry.height - geometry.top - geometry.bottom;
+      return geometry.top + (geometry.maxSpeed - speed) /
+        (geometry.maxSpeed - geometry.minSpeed) * plotHeight;
+    }
+
+    function yToSpeed(y, geometry) {
+      const plotHeight = geometry.height - geometry.top - geometry.bottom;
+      const fraction = (y - geometry.top) / plotHeight;
+      return Math.round(Math.max(
+        geometry.minSpeed,
+        Math.min(geometry.maxSpeed, geometry.maxSpeed - fraction * (geometry.maxSpeed - geometry.minSpeed))
+      ));
+    }
+
+    function indexToX(index, geometry) {
+      const plotWidth = geometry.width - geometry.left - geometry.right;
+      return geometry.left + index / (speedProfile.length - 1) * plotWidth;
+    }
+
+    function xToIndex(x, geometry) {
+      const plotWidth = geometry.width - geometry.left - geometry.right;
+      const fraction = Math.max(0, Math.min(1, (x - geometry.left) / plotWidth));
+      return Math.round(fraction * (speedProfile.length - 1));
+    }
+
+    function drawSpeedProfile() {
+      if (!speedProfileContext || !speedProfileCanvas) return;
+      const g = speedCanvasGeometry();
+      const ctx = speedProfileContext;
+      ctx.clearRect(0, 0, g.width, g.height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, g.width, g.height);
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 1 * g.scale;
+      ctx.font = `${11 * g.scale}px Segoe UI, Arial, sans-serif`;
+      ctx.fillStyle = "#64748b";
+      [250, 400, 550, 700].forEach(speed => {
+        const y = speedToY(speed, g);
+        ctx.beginPath();
+        ctx.moveTo(g.left, y);
+        ctx.lineTo(g.width - g.right, y);
+        ctx.stroke();
+        ctx.fillText(String(speed), 6 * g.scale, y + 4 * g.scale);
+      });
+      ctx.strokeStyle = "#0e7490";
+      ctx.lineWidth = 3 * g.scale;
+      ctx.beginPath();
+      speedProfile.forEach((speed, index) => {
+        const x = indexToX(index, g);
+        const y = speedToY(speed, g);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.fillStyle = "#0e7490";
+      speedProfile.forEach((speed, index) => {
+        if (index % 8 !== 0) return;
+        ctx.beginPath();
+        ctx.arc(indexToX(index, g), speedToY(speed, g), 3.2 * g.scale, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function renderSpeedProfile() {
+      speedProfileText.value = speedProfile.join(",");
+      drawSpeedProfile();
+    }
+
+    function setSpeedFromPointer(event) {
+      if (!speedProfileCanvas) return;
+      const rect = speedProfileCanvas.getBoundingClientRect();
+      const g = speedCanvasGeometry();
+      const x = (event.clientX - rect.left) * g.scale;
+      const y = (event.clientY - rect.top) * g.scale;
+      const center = xToIndex(x, g);
+      const speed = yToSpeed(y, g);
+      for (let offset = -2; offset <= 2; offset += 1) {
+        const index = (center + offset + speedProfile.length) % speedProfile.length;
+        const weight = 1 - Math.abs(offset) / 3;
+        speedProfile[index] = Math.round(speedProfile[index] * (1 - weight) + speed * weight);
+      }
+      renderSpeedProfile();
+    }
+
+    if (speedProfileCanvas) {
+      speedProfileCanvas.addEventListener("pointerdown", event => {
+        speedProfileCanvas.setPointerCapture(event.pointerId);
+        setSpeedFromPointer(event);
+      });
+      speedProfileCanvas.addEventListener("pointermove", event => {
+        if (event.buttons) setSpeedFromPointer(event);
+      });
+      window.addEventListener("resize", drawSpeedProfile);
+    }
+
     function smoothSpeedProfile() {
       speedProfile = speedProfile.map((_, index) => {
         const values = [-2, -1, 0, 1, 2].map(offset =>
@@ -977,6 +1170,11 @@
       smoothSpeedProfile();
     });
     renderSpeedProfile();
+
+    function selectAmbientSourceAndPlot(source, button) {
+      setAmbientSource(source);
+      showAmbientPlot(button);
+    }
 
     function showAmbientPlot(button) {
       const image = document.getElementById("ambient-plot-image");
@@ -1555,6 +1753,13 @@
       tabPanels.forEach(panel => {
         panel.classList.toggle("active", panel.dataset.panel === name);
       });
+      const simulationForm = document.getElementById("simulation-form");
+      if (simulationForm) {
+        simulationForm.classList.toggle(
+          "hidden",
+          !["model", "ambient", "cme"].includes(name)
+        );
+      }
       if (updateHash) history.replaceState(null, "", `#${name}`);
     }
 

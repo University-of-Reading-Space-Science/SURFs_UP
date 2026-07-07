@@ -135,13 +135,15 @@ def _model_defaults() -> dict[str, object]:
     import astropy.units as u
     import surf.surf_inputs as sin
 
+    today = datetime.datetime.now(datetime.UTC).replace(tzinfo=None, microsecond=0)
     now = (
-        datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=6)
+        today - datetime.timedelta(days=6)
     ).replace(tzinfo=None, microsecond=0)
     cr_num, cr_lon = sin.datetime2surfinputs(now)
     earth_latitude = sin.get_earth_lat(now)
     return {
         "default_start": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        "default_iswa_map_datetime": today.strftime("%Y-%m-%dT%H:%M"),
         "default_cr_num": int(cr_num),
         "default_cr_lon": cr_lon.to_value(u.deg),
         "default_latitude": (
@@ -282,6 +284,20 @@ def _ambient_file_start_time(source: str, filepath: Path):
     if source == "cortom":
         return _parse_cortom_start_time(filepath)
     return None
+
+
+def _iswa_map_datetime(value: str, fallback: str) -> datetime.datetime:
+    """Parse the ISWA WSA map date/time control.
+
+    Accept both date-only values from older forms/configurations and
+    ``datetime-local`` values from the current web interface.
+    """
+    text = (value or fallback or "").strip().replace(" ", "T")
+    if not text:
+        return datetime.datetime.now(datetime.UTC).replace(tzinfo=None, microsecond=0)
+    if "T" not in text:
+        text = f"{text}T23:59:59"
+    return datetime.datetime.fromisoformat(text)
 
 
 def _draw_speed_map(ax, speed_map, longitudes, latitudes, extraction_latitude, title):
@@ -582,8 +598,10 @@ def _ambient_preview_figure():
             "wsa_speed_reduction",
         )
     if source == "wsa_iswa":
-        iswa_date = request.form.get("iswa_map_date") or request.form.get("start_datetime", "")[:10]
-        required_for = datetime.datetime.fromisoformat(f"{iswa_date}T23:59:59")
+        required_for = _iswa_map_datetime(
+            request.form.get("iswa_map_date", ""),
+            request.form.get("start_datetime", ""),
+        )
         path = sin.get_WSA_from_ISWA(required_for)
         return plot_file_source(
             "WSA boundary profiles",
@@ -662,11 +680,11 @@ def _request_from_form() -> SimulationRequest:
             if map_time is not None:
                 start = map_time.strftime("%Y-%m-%d %H:%M:%S")
     elif source == "wsa_iswa":
-        iswa_date = request.form.get("iswa_map_date") or start[:10]
+        iswa_datetime = _iswa_map_datetime(request.form.get("iswa_map_date", ""), start)
         ambient.update(
             decelerate_to_inner_boundary="iswa_decelerate" in request.form,
             apply_wsa_speed_reduction="iswa_speed_reduction" in request.form,
-            iswa_map_datetime=f"{iswa_date}T23:59:59",
+            iswa_map_datetime=iswa_datetime.isoformat(),
         )
     elif source == "cortom":
         uploaded = request.files.get("cortom_file")

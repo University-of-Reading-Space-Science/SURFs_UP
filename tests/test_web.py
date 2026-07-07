@@ -23,6 +23,7 @@ def test_preview_uses_shared_generator():
             "simtime_days": "5",
             "speed_kms": "400",
             "start_datetime": "2026-07-03T12:00",
+            "iswa_map_date": "2026-07-07T09:30:00",
             "cr_num": "2300",
             "cr_lon_init_deg": "0",
             "lon_min": "315",
@@ -195,7 +196,7 @@ def test_ambient_file_time_endpoint_returns_inferred_timestamp(monkeypatch):
             {
                 "ambient_source": "wsa_iswa",
                 "latitude": "0",
-                "iswa_map_date": "2026-07-03",
+                "iswa_map_date": "2026-07-03T12:30:00",
                 "iswa_decelerate": "on",
                 "iswa_speed_reduction": "on",
                 "include_bpol": "on",
