@@ -7,8 +7,11 @@ import csv
 import inspect
 import io
 import json
+import os
+import pickle
 import tempfile
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from pathlib import Path
@@ -29,15 +32,20 @@ _RUN_PROGRESS: OrderedDict[str, str] = OrderedDict()
 _RUN_PROGRESS_LOCK = threading.Lock()
 _PLOT_LOCK = threading.Lock()
 _MAX_RETAINED_RUNS = 8
+_RUN_CACHE_DIR = Path(
+    os.environ.get("SURFS_UP_RUN_CACHE_DIR", Path.home() / ".cache" / "surfs_up" / "runs")
+)
 _DONKI_URL = "https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CMEAnalysis"
 
 
 def _retain_model(model: object, simulation: SimulationRequest) -> str:
     run_id = uuid.uuid4().hex
+    retained = {"model": model, "simulation": simulation}
     with _RUNS_LOCK:
-        _RUNS[run_id] = {"model": model, "simulation": simulation}
+        _RUNS[run_id] = retained
         while len(_RUNS) > _MAX_RETAINED_RUNS:
             _RUNS.popitem(last=False)
+    _write_run_cache(run_id, retained)
     return run_id
 
 
@@ -45,7 +53,13 @@ def _run_for(run_id: str) -> dict[str, object]:
     with _RUNS_LOCK:
         retained = _RUNS.get(run_id)
     if retained is None:
+        retained = _read_run_cache(run_id)
+    if retained is None:
         abort(404, "Run not found or no longer retained.")
+    with _RUNS_LOCK:
+        _RUNS[run_id] = retained
+        while len(_RUNS) > _MAX_RETAINED_RUNS:
+            _RUNS.popitem(last=False)
     if isinstance(retained, dict):
         return retained
     return {"model": retained, "simulation": None}
@@ -53,6 +67,57 @@ def _run_for(run_id: str) -> dict[str, object]:
 
 def _model_for(run_id: str) -> object:
     return _run_for(run_id)["model"]
+
+
+def _run_cache_path(run_id: str) -> Path:
+    if not run_id.isalnum():
+        abort(404)
+    return _RUN_CACHE_DIR / f"{run_id}.pickle"
+
+
+def _write_run_cache(run_id: str, retained: dict[str, object]) -> None:
+    try:
+        _RUN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        path = _run_cache_path(run_id)
+        with tempfile.NamedTemporaryFile(
+            "wb", dir=_RUN_CACHE_DIR, delete=False, prefix=f"{run_id}.", suffix=".tmp"
+        ) as handle:
+            pickle.dump(retained, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            temp_path = Path(handle.name)
+        temp_path.replace(path)
+        _prune_run_cache()
+    except Exception:
+        # In-memory retention is still enough for local/single-worker use; a disk
+        # cache is only needed when a deployment serves follow-up plot requests
+        # from a different Python process.
+        pass
+
+
+def _read_run_cache(run_id: str) -> dict[str, object] | None:
+    try:
+        path = _run_cache_path(run_id)
+        with path.open("rb") as handle:
+            retained = pickle.load(handle)
+        os.utime(path, None)
+        return retained if isinstance(retained, dict) else {"model": retained, "simulation": None}
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+def _prune_run_cache() -> None:
+    cached_runs = sorted(
+        _RUN_CACHE_DIR.glob("*.pickle"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    cutoff = time.time() - 24 * 60 * 60
+    for path in cached_runs[_MAX_RETAINED_RUNS:]:
+        path.unlink(missing_ok=True)
+    for path in cached_runs[:_MAX_RETAINED_RUNS]:
+        if path.stat().st_mtime < cutoff:
+            path.unlink(missing_ok=True)
 
 
 def _set_run_progress(progress_id: str, message: str) -> None:
