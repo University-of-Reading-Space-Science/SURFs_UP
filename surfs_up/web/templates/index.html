@@ -193,13 +193,13 @@
           <label><span class="sr-only">Carrington rotation</span>
             <input name="cr_num" id="model-cr-number" type="number" value="{{ default_cr_num }}">
           </label>
-          <span class="pb-2 text-sm font-medium text-slate-600">Earth Carr lon at start</span>
-          <label><span class="sr-only">Earth Carrington longitude</span>
+          <span class="pb-2 text-sm font-medium text-slate-600">Earth Carr lon at start (deg)</span>
+          <label><span class="sr-only">Earth Carrington longitude in degrees</span>
             <input name="cr_lon_init_deg" id="model-cr-longitude" type="number" step="0.1" value="{{ '%.1f'|format(default_cr_lon) }}">
           </label>
         </div>
         <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[auto_minmax(7rem,1fr)_auto_minmax(10rem,1fr)_minmax(12rem,auto)]">
-          <span class="pb-2 text-sm font-medium text-slate-600">Run time</span>
+          <span class="pb-2 text-sm font-medium text-slate-600">Run time (days)</span>
           <label><span class="sr-only">Run time in days</span>
             <input name="simtime_days" type="number" step="0.1" value="10">
           </label>
@@ -214,18 +214,18 @@
     <fieldset class="group-box">
       <legend class="group-title px-1">Coordinate settings</legend>
       <div class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_1fr_auto_1fr]">
-        <span class="pb-2 text-sm font-medium text-slate-600">Model latitude (defaults to Earth)</span>
-        <label><span class="sr-only">Model latitude</span><input name="latitude" id="model-latitude" type="number" step="0.1" value="{{ '%.2f'|format(default_latitude) }}"></label>
+        <span class="pb-2 text-sm font-medium text-slate-600">Model latitude (deg; defaults to Earth)</span>
+        <label><span class="sr-only">Model latitude in degrees</span><input name="latitude" id="model-latitude" type="number" step="0.1" value="{{ '%.2f'|format(default_latitude) }}"></label>
         <span class="pb-2 text-sm font-medium text-slate-600">Frame</span>
         <label><span class="sr-only">Coordinate frame</span><select name="frame"><option value="sidereal">Sidereal (recommended for 2D runs)</option><option value="synodic">Synodic (recommended for 1D runs)</option></select></label>
       </div>
       <div class="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(16rem,auto)_1fr]">
         <label class="pb-2"><span><input name="is_1d" id="model-is-1d" type="checkbox"> Run as 1D (single longitude)</span></label>
         <div id="model-longitude-row" class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_1fr]">
-          <span class="pb-2 text-sm font-medium text-slate-600">Longitude</span>
-          <label><span class="sr-only">Longitude start</span><input name="lon_min" type="number" value="315"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Longitude range (deg)</span>
+          <label><span class="sr-only">Longitude start in degrees</span><input name="lon_min" type="number" value="315"></label>
           <span class="pb-2 text-sm font-medium text-slate-600">to</span>
-          <label><span class="sr-only">Longitude stop</span><input name="lon_max" type="number" value="45"></label>
+          <label><span class="sr-only">Longitude stop in degrees</span><input name="lon_max" type="number" value="45"></label>
         </div>
       </div>
     </fieldset>
@@ -233,23 +233,23 @@
       <legend class="group-title px-1">Advanced</legend>
       <div class="grid gap-4">
         <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_auto_1fr]">
-          <span class="pb-2 text-sm font-medium text-slate-600">Radial bounds — rmin</span>
-          <label><span class="sr-only">Inner radius</span><input name="rmin" id="model-rmin" type="number" step="0.1" value="21.5"></label>
-          <span class="pb-2 text-sm font-medium text-slate-600">rmax</span>
-          <label><span class="sr-only">Outer radius</span><input name="rmax" type="number" step="0.1" value="240"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Radial bounds — rmin (Rs)</span>
+          <label><span class="sr-only">Inner radius in solar radii</span><input name="rmin" id="model-rmin" type="number" step="0.1" value="21.5"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">rmax (Rs)</span>
+          <label><span class="sr-only">Outer radius in solar radii</span><input name="rmax" type="number" step="0.1" value="240"></label>
         </div>
         <div class="grid items-end gap-3 sm:grid-cols-3 lg:grid-cols-[auto_1fr_auto_1fr_auto_1fr]">
-          <span class="pb-2 text-sm font-medium text-slate-600">Grid — dr</span>
-          <label><span class="sr-only">Radial grid spacing</span><input name="dr_rs" type="number" step="0.01" value="1.5"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Grid — dr (Rs)</span>
+          <label><span class="sr-only">Radial grid spacing in solar radii</span><input name="dr_rs" type="number" step="0.01" value="1.5"></label>
           <span class="pb-2 text-sm font-medium text-slate-600">nlon</span>
           <label><span class="sr-only">Longitude grid points</span><input name="nlon" type="number" step="1" value="128"></label>
-          <span class="pb-2 text-sm font-medium text-slate-600">vmax</span>
-          <label><span class="sr-only">Maximum grid speed</span><input name="vmax_kms" type="number" step="100" value="3000"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">vmax (km/s)</span>
+          <label><span class="sr-only">Maximum grid speed in kilometres per second</span><input name="vmax_kms" type="number" step="100" value="3000"></label>
         </div>
         <div class="grid items-end gap-3 lg:grid-cols-[minmax(12rem,auto)_auto_1fr]">
           <label class="pb-2"><span><input name="streak_lines_enabled" type="checkbox"> Enable streak lines</span></label>
-          <span class="pb-2 text-sm font-medium text-slate-600">Spacing</span>
-          <label><span class="sr-only">Streak-line spacing</span><input name="streak_spacing_deg" type="number" value="10"></label>
+          <span class="pb-2 text-sm font-medium text-slate-600">Spacing (deg)</span>
+          <label><span class="sr-only">Streak-line spacing in degrees</span><input name="streak_spacing_deg" type="number" value="10"></label>
         </div>
         <label><span><input name="track_cmes" type="checkbox"> Track CME fronts</span></label>
       </div>
@@ -261,7 +261,7 @@
     <input type="hidden" name="ambient_source" id="ambient-source" value="wsa_iswa">
     <div class="inner-tabs wide" id="ambient-source-tabs">
       {% for value, label in [
-        ("user_specified", "User specified"), ("mas", "MAS"), ("wsa", "WSA"),
+        ("user_specified", "User specified"), ("mas", "MAS"), ("wsa", "WSA (user supplied)"),
         ("wsa_iswa", "WSA (ISWA)"), ("insitu_backmapped", "OMNI-backmapped"),
         ("omni", "OMNI outwards"), ("cortom", "CorTom")
       ] %}
@@ -271,7 +271,7 @@
     </div>
     <fieldset class="group-box source-panel" data-source-panel="user_specified">
       <legend class="group-title px-1">User-specified boundary</legend>
-      <p class="mb-4 text-sm text-slate-600">Set solar-wind speed at 128 Carrington longitudes. Changes are periodic across 0/360°.</p>
+      <p class="mb-4 text-sm text-slate-600">Set solar-wind speed (km/s) at 128 Carrington longitudes. Changes are periodic across 0/360°.</p>
       <div class="button-group mb-4">
         <button type="button" class="secondary-button" id="reset-speed-profile">Reset</button>
         <button type="button" class="secondary-button" id="smooth-speed-profile">Smooth</button>
@@ -375,7 +375,7 @@
         <label>HEEQ latitude (deg)<input id="cme-latitude" type="number" value="0" step="1"></label>
         <label>Speed (km/s)<input id="cme-speed" type="number" value="800" step="10"></label>
         <label>Width (deg)<input id="cme-width" type="number" value="60" step="1"></label>
-        <label>Launch day<input id="cme-launch-day" type="number" value="0.5" step="0.1"></label>
+        <label>Launch day (days after run start)<input id="cme-launch-day" type="number" value="0.5" step="0.1"></label>
         <label>Launch datetime (UTC)<input id="cme-launch-datetime" type="datetime-local"></label>
         <label>Thickness (Rs)<input id="cme-thickness" type="number" value="5" step="0.5"></label>
         <label>Initial height (Rs)<input id="cme-initial-height" type="number" value="21.5" step="0.5"></label>
@@ -425,7 +425,7 @@
       <h2 class="mt-0">Plots</h2>
       {% if run_id %}
       <p class="mb-5 text-sm text-slate-500">These products remain available while this server process retains the run.</p>
-      <form class="form-grid" id="plots-form" onsubmit="return false">
+      <form class="form-grid wide" id="plots-form" onsubmit="return false">
         <div class="inner-tabs" data-inner-tabs="plot-products">
           <button type="button" class="inner-tab-button active" data-inner-tab="map-product">2D Map</button>
           <button type="button" class="inner-tab-button" data-inner-tab="radial-product">Radial Profile</button>
@@ -434,7 +434,7 @@
         <fieldset class="group-box product-panel active" id="map-controls" data-inner-panel="map-product">
           <legend class="group-title px-1">2D Map (sa.plot)</legend>
           <div class="grid max-w-2xl gap-3">
-            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time (days)
               <input id="plot-time" type="number" min="0" max="1000" step="0.1" value="1.5">
             </label>
             <label><span><input id="map-minimal" type="checkbox"> Minimal plot</span></label>
@@ -442,7 +442,7 @@
             <label><span><input id="map-annotate" type="checkbox" checked> Annotate plot</span></label>
             <label><span><input id="map-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
             <div class="flex flex-wrap items-center gap-3">
-              <label><span><input id="map-limit-rmax" type="checkbox"> Limit outer radius</span></label>
+              <label><span><input id="map-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
               <input class="max-w-40" aria-label="Outer radius in solar radii" id="map-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
             </div>
@@ -452,10 +452,10 @@
         <fieldset class="group-box product-panel" data-inner-panel="radial-product">
           <legend class="group-title px-1">Radial Profile (sa.plot_radial)</legend>
           <div class="grid max-w-2xl gap-3">
-            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time (days)
               <input id="radial-time" type="number" min="0" max="1000" step="0.1" value="1.5">
             </label>
-            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Longitude
+            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Longitude (deg)
               <input id="radial-lon" type="number" min="-360" max="360" step="1" value="0">
             </label>
             <div><button type="button" onclick="showPlot('radial', this)">Plot Radial Profile</button></div>
@@ -489,11 +489,10 @@
           </div>
         </fieldset>
       </form>
-      <section class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
+      <section class="mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
         <h3 class="font-semibold text-slate-900">Figure output</h3>
         <p class="mt-2 text-sm font-medium text-surf-600" id="product-status">Choose a plot above to render it here.</p>
-        <img class="mt-4 hidden w-full rounded-xl border border-slate-200 bg-white shadow-sm"
-             id="plot-image" alt="Selected SURF plot">
+        <div class="mt-4 space-y-4" id="plot-history"></div>
       </section>
       {% else %}
       <p class="text-slate-500">Run SURF successfully to enable plots.</p>
@@ -503,7 +502,7 @@
     <section class="card tab-panel" data-panel="movies" role="tabpanel">
       <h2 class="mt-0">Movies</h2>
       {% if run_id %}
-      <form class="form-grid" id="movies-form" onsubmit="return false">
+      <form class="form-grid wide" id="movies-form" onsubmit="return false">
         <div class="inner-tabs" data-inner-tabs="movie-products">
           <button type="button" class="inner-tab-button active" data-inner-tab="map-movie">2D Movie</button>
           <button type="button" class="inner-tab-button" data-inner-tab="timeseries-movie">Movie with Time Series</button>
@@ -519,8 +518,8 @@
             <div class="flex flex-wrap items-center gap-4">
               <label><span><input id="movie-hcs" type="checkbox" checked> Plot HCS</span></label>
               <label><span><input id="movie-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
-              <label><span><input id="movie-limit-rmax" type="checkbox"> Limit outer radius</span></label>
-              <input class="max-w-40" aria-label="Movie outer radius" id="movie-rmax"
+              <label><span><input id="movie-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
+              <input class="max-w-40" aria-label="Movie outer radius in solar radii" id="movie-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
             </div>
             <div class="grid items-end gap-3 sm:grid-cols-[6rem_1fr_auto]">
@@ -542,8 +541,8 @@
             </div>
             <div class="flex flex-wrap items-center gap-4">
               <label><span><input id="movie-ts-hcs" type="checkbox" checked> Plot HCS</span></label>
-              <label><span><input id="movie-ts-limit-rmax" type="checkbox"> Limit outer radius</span></label>
-              <input class="max-w-40" aria-label="Time-series movie outer radius" id="movie-ts-rmax"
+              <label><span><input id="movie-ts-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
+              <input class="max-w-40" aria-label="Time-series movie outer radius in solar radii" id="movie-ts-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
             </div>
             <label class="grid items-center gap-3 sm:grid-cols-[6rem_1fr]">Field
@@ -622,12 +621,14 @@
         button.textContent = button.dataset.idleText || button.textContent;
       }
       function showPlot(kind, button) {
-        const image = document.getElementById("plot-image");
         const query = new URLSearchParams(values());
+        const outputPanel = document.getElementById("plot-output");
+        const plotHistory = document.getElementById("plot-history");
         const status = document.getElementById("product-status");
         const plotCode = buildPlotCode(kind);
         if (plotCode) recordPlotCode(plotCode);
         beginTask(button, "Generating plot...");
+        outputPanel.classList.remove("hidden");
         status.textContent = "Generating plot...";
         fetch(`${runBase}/plot/${kind}.png?${query}&cache=${Date.now()}`)
           .then(async response => {
@@ -638,11 +639,20 @@
             return response.blob();
           })
           .then(blob => {
-            if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
-            image.dataset.objectUrl = URL.createObjectURL(blob);
-            image.src = image.dataset.objectUrl;
-            image.style.display = "block";
-            status.textContent = "";
+            const objectUrl = URL.createObjectURL(blob);
+            const figure = document.createElement("article");
+            figure.className = "rounded-xl border border-slate-200 bg-white p-3 shadow-sm";
+            const caption = document.createElement("p");
+            caption.className = "mb-3 text-sm font-medium text-slate-700";
+            caption.textContent = `${kind} plot generated ${new Date().toLocaleTimeString()}`;
+            const image = document.createElement("img");
+            image.className = "w-full rounded-lg border border-slate-200 bg-white";
+            image.alt = `${kind} SURF plot`;
+            image.src = objectUrl;
+            image.dataset.objectUrl = objectUrl;
+            figure.append(caption, image);
+            plotHistory.prepend(figure);
+            status.textContent = "Newest figure is shown first.";
             finishTask(button, "Plot Ready");
           })
           .catch(error => {

@@ -1,0 +1,14 @@
+
+In pyhtonanywhere bash window:
+
+
+
+workon surfs-up
+cd /home/mathewjowens/SURFs_UP
+git pull
+pip install -e ".[web]"
+
+workon surfs-up
+cd /home/mathewjowens/SURF
+git pull
+pip install -e .
