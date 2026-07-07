@@ -1,10 +1,20 @@
 """Fast tests for framework-neutral SURFs_UP behaviour."""
 
+from types import SimpleNamespace
+
+import astropy.units as u
+import matplotlib.pyplot as plt
+import numpy as np
+from astropy.time import Time
+
 from surfs_up.core import (
     SimulationRequest,
     build_generated_code,
     build_uniform_boundary_code,
+    plot_custom_timeseries,
+    plot_radial,
     run_generated_code,
+    sample_custom_timeseries,
 )
 
 
@@ -71,6 +81,59 @@ def test_invalid_radial_bounds_are_rejected():
         assert "inner radial boundary" in str(exc)
     else:
         raise AssertionError("Expected invalid radial bounds to be rejected")
+
+
+def test_radial_plot_skips_cme_without_selected_time_coordinates():
+    model = SimpleNamespace(
+        time_out=np.array([0.0, 1.0]) * u.day,
+        lon=np.array([0.0]) * u.deg,
+        r=np.array([20.0, 30.0, 40.0]) * u.solRad,
+        v_grid=np.array([[[400.0], [420.0], [440.0]], [[450.0], [470.0], [490.0]]]),
+        cmes=[
+            SimpleNamespace(
+                coords={
+                    0: {
+                        "lon": np.array([0.0, 0.0]) * u.deg,
+                        "r": np.array([25.0, 35.0]) * u.solRad,
+                        "front_id": np.array([0.0, 1.0]),
+                    }
+                }
+            )
+        ],
+    )
+
+    fig, ax = plot_radial(model, 1.0 * u.day, lon=0.0 * u.deg)
+
+    assert fig is not None
+    assert ax.lines
+    plt.close(fig)
+
+
+def test_custom_timeseries_plots_bpol_when_grid_is_available():
+    model = SimpleNamespace(
+        time_out=np.array([0.0, 1.0, 2.0]) * u.day,
+        lon=np.array([0.0]) * u.deg,
+        r=np.array([20.0, 215.0]) * u.solRad,
+        v_grid=np.array(
+            [[[390.0], [400.0]], [[410.0], [420.0]], [[430.0], [440.0]]]
+        )
+        * (u.km / u.s),
+        b_grid=np.array([[[1.0], [-1.0]], [[-1.0], [1.0]], [[1.0], [-1.0]]]),
+        cmes=[],
+        compressible=False,
+        time_init=Time("2026-07-03T12:00:00"),
+    )
+
+    series = sample_custom_timeseries(model, 1.0 * u.AU, 0.0 * u.deg)
+    fig, axes = plot_custom_timeseries(model, 1.0 * u.AU, 0.0 * u.deg)
+    axes = np.atleast_1d(axes)
+
+    assert "bpol" in series
+    assert "time" in series
+    assert len(axes) == 2
+    assert axes[1].get_ylabel() == r"B$_{\text{POL}}$"
+    assert axes[-1].get_xlabel() == "DD-MM of 2026"
+    plt.close(fig)
 
 
 def test_general_generator_supports_cmes():

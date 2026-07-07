@@ -23,7 +23,11 @@ from flask import Flask, abort, jsonify, render_template, request, send_file
 from surfs_up.core import (
     SimulationRequest,
     build_generated_code,
+    format_datetime_axis_like_surf,
+    plot_custom_timeseries,
+    plot_radial as plot_radial_profile,
     run_generated_code,
+    sample_custom_timeseries,
 )
 
 _RUNS: OrderedDict[str, object] = OrderedDict()
@@ -913,7 +917,7 @@ def create_app(config: dict | None = None) -> Flask:
                 else:
                     sa.plot_compressible(model, plot_time, **options)
             elif kind == "radial":
-                sa.plot_radial(
+                plot_radial_profile(
                     model,
                     float(request.args.get("radial_time", 1.5)) * u.day,
                     lon=float(request.args.get("radial_lon", 0)) * u.deg,
@@ -921,7 +925,7 @@ def create_app(config: dict | None = None) -> Flask:
             elif kind == "timeseries":
                 observer = request.args.get("observer", "custom")
                 if observer == "custom":
-                    sa.plot_timeseries(
+                    plot_custom_timeseries(
                         model,
                         float(request.args.get("radius", 1)) * u.AU,
                         lon=float(request.args.get("timeseries_lon", 0)) * u.deg,
@@ -947,6 +951,19 @@ def create_app(config: dict | None = None) -> Flask:
                     for axis, (key, label) in zip(np.atleast_1d(axes), fields):
                         axis.plot(series["time"], series[key], "r-")
                         axis.set_ylabel(label)
+                        axis.grid(True, alpha=0.3)
+                    format_datetime_axis_like_surf(
+                        figure,
+                        np.atleast_1d(axes),
+                        series["time"],
+                    )
+                    figure.subplots_adjust(
+                        left=0.10,
+                        bottom=0.14,
+                        right=0.98,
+                        top=0.90,
+                        hspace=0.05,
+                    )
                     figure.suptitle(f"SURF time series at {observer}")
             else:
                 abort(404)
@@ -976,7 +993,6 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.get("/runs/<run_id>/timeseries.csv")
     def timeseries_csv(run_id: str):
-        import numpy as np
         import astropy.units as u
         import surf.surf_analysis as sa
 
@@ -985,29 +1001,7 @@ def create_app(config: dict | None = None) -> Flask:
         if observer == "custom":
             radius = float(request.args.get("radius", 1)) * u.AU
             longitude = float(request.args.get("timeseries_lon", 0)) * u.deg
-            radial_index = int(np.argmin(np.abs(model.r - radius)))
-            longitude_index = (
-                0
-                if model.lon.size == 1
-                else int(np.argmin(np.abs(model.lon - longitude)))
-            )
-            series = {
-                "time_days": np.asarray(model.time_out.to_value(u.day)),
-                "vsw": np.asarray(model.v_grid[:, radial_index, longitude_index]),
-            }
-            if hasattr(model, "b_grid"):
-                series["bpol"] = np.asarray(
-                    model.b_grid[:, radial_index, longitude_index]
-                )
-            if getattr(model, "compressible", False):
-                series["n"] = np.asarray(
-                    model.rho_grid[:, radial_index, longitude_index].value
-                    / 1.6726e-27
-                    / 1e6
-                )
-                series["T"] = np.asarray(
-                    model.temp_grid[:, radial_index, longitude_index].value
-                )
+            series = sample_custom_timeseries(model, radius, longitude)
         else:
             series = sa.get_observer_timeseries(model, observer=observer)
         if hasattr(series, "to_csv"):

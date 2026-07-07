@@ -514,11 +514,11 @@
                 ("STB","STEREO-B"),("ULYSSES","Ulysses"),("custom","Custom coordinates")] %}
               <option value="{{ value }}">{{ label }}</option>{% endfor %}
             </select></label>
-            <p class="text-sm text-slate-500">Standard locations follow each observer's ephemeris throughout the run.</p>
+            <p class="text-sm text-slate-500">Standard locations follow each observer's ephemeris throughout the run. Custom longitude is fixed on the SURF model grid: HEEQ/model longitude at run start for sidereal runs, or corotating model longitude for synodic runs.</p>
             <div class="hidden grid-cols-1 items-end gap-3 sm:grid-cols-[10rem_1fr_1fr]" id="timeseries-custom-coordinates">
               <span class="pb-2 text-sm font-medium text-slate-700">Custom coordinates</span>
               <label>Radius (AU)<input id="plot-radius" type="number" min="0.1" max="10" step="0.1" value="1"></label>
-              <label>Longitude (deg)<input id="timeseries-lon" type="number" min="-360" max="360" step="1" value="0"></label>
+              <label>Fixed model longitude (deg)<input id="timeseries-lon" type="number" min="-360" max="360" step="1" value="0"></label>
             </div>
             <div class="grid items-end gap-3 sm:grid-cols-[10rem_1fr_auto]">
               <span class="pb-2 text-sm font-medium text-slate-700">CSV output</span>
@@ -905,7 +905,9 @@
           const radius = document.getElementById("plot-radius").value;
           const lon = document.getElementById("timeseries-lon").value;
           return [
-            "# Plot a time series at a fixed radius and longitude.",
+            "# Plot a time series at a fixed radius and SURF model longitude.",
+            "# In sidereal runs this is HEEQ/model longitude at run start;",
+            "# in synodic runs this is the corotating model longitude.",
             "sa.plot_timeseries(",
             "    model,",
             `    ${Number(radius).toFixed(1)} * u.AU,`,
@@ -1492,12 +1494,21 @@
         event.submitter.textContent = "Running SURF...";
         const workflowStatus = document.getElementById("workflow-status");
         workflowStatus.textContent = "Grabbing and processing input data";
+        let latestRunProgress = workflowStatus.textContent;
+        window.setTimeout(() => {
+          if (latestRunProgress === "Grabbing and processing input data") {
+            workflowStatus.textContent = "Running SURF";
+          }
+        }, 2500);
         window.setInterval(async () => {
           try {
             const response = await fetch(`/run-progress/${progressId}`);
             if (response.ok) {
               const progress = await response.json();
-              if (progress.message) workflowStatus.textContent = progress.message;
+              if (progress.message) {
+                latestRunProgress = progress.message;
+                workflowStatus.textContent = progress.message;
+              }
             }
           } catch (_) {}
         }, 250);

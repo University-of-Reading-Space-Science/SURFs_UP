@@ -60,6 +60,9 @@ from surfs_up.core import (
     SimulationRequest,
     build_generated_code,
     build_uniform_boundary_code,
+    format_datetime_axis_like_surf,
+    plot_custom_timeseries,
+    plot_radial as plot_radial_profile,
     run_generated_code,
 )
 
@@ -1180,12 +1183,14 @@ class VisualisationTab(QWidget):
         ts_custom_layout.setContentsMargins(0, 0, 0, 0)
         ts_custom_layout.addWidget(QLabel("Radius"))
         ts_custom_layout.addWidget(self.ts_radius_spin)
-        ts_custom_layout.addWidget(QLabel("Longitude"))
+        ts_custom_layout.addWidget(QLabel("Fixed model longitude"))
         ts_custom_layout.addWidget(self.ts_lon_spin)
         self.ts_custom_coordinates.setLayout(ts_custom_layout)
 
         ts_note = QLabel(
-            "Standard locations follow each observer's ephemeris throughout the run."
+            "Standard locations follow each observer's ephemeris throughout the run. "
+            "Custom longitude is fixed on the SURF model grid: HEEQ/model longitude "
+            "at run start for sidereal runs, or corotating model longitude for synodic runs."
         )
         ts_note.setWordWrap(True)
 
@@ -2598,6 +2603,7 @@ class SurfMainWindow(QMainWindow):
         if self.plot_code_history:
             code_text += (
                 "\n\n# Plotting code run from the GUI\n"
+                "import matplotlib.dates as mdates\n"
                 "import matplotlib.pyplot as plt\n"
                 "import surf.surf_analysis as sa\n\n"
                 + "\n\n".join(self.plot_code_history)
@@ -2807,7 +2813,7 @@ class SurfMainWindow(QMainWindow):
                     ]
                 )
             )
-            sa.plot_radial(self.last_model, plot_time, lon=lon)
+            plot_radial_profile(self.last_model, plot_time, lon=lon)
             plt.show()
             self._on_plot_succeeded("Radial profile")
         except Exception:
@@ -2827,8 +2833,11 @@ class SurfMainWindow(QMainWindow):
                 self._record_plot_code(
                     "\n".join(
                         [
-                            "# Plot a time series at a fixed radius and longitude.",
-                            "sa.plot_timeseries(",
+                            "# Plot a time series at a fixed radius and SURF model longitude.",
+                            "# In sidereal runs this is HEEQ/model longitude at run start;",
+                            "# in synodic runs this is the corotating model longitude.",
+                            "from surfs_up.core import plot_custom_timeseries",
+                            "plot_custom_timeseries(",
                             "    model,",
                             f"    {radius.to_value(u.AU)!r} * u.AU,",
                             f"    lon={lon.to_value(u.deg)!r} * u.deg,",
@@ -2837,7 +2846,7 @@ class SurfMainWindow(QMainWindow):
                         ]
                     )
                 )
-                sa.plot_timeseries(self.last_model, radius, lon=lon)
+                plot_custom_timeseries(self.last_model, radius, lon=lon)
             else:
                 if str(observer).upper() not in SUPPORTED_OBSERVERS:
                     self.status_label.setText(
@@ -2906,6 +2915,11 @@ class SurfMainWindow(QMainWindow):
                     [
                         "for axis in axes:",
                         "    axis.legend()",
+                        "date_locator = mdates.DayLocator() if (times.iloc[-1] - times.iloc[0]).total_seconds() / 86400 <= 7 else mdates.AutoDateLocator()",
+                        "axes[-1].xaxis.set_major_locator(date_locator)",
+                        "axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%d-%m'))",
+                        "fig.autofmt_xdate(rotation=0, ha='center')",
+                        "axes[-1].set_xlabel(f\"DD-MM of {times.iloc[0].year}\", fontsize=12, fontweight='bold')",
                         "plt.show()",
                     ]
                 )
@@ -2964,11 +2978,7 @@ class SurfMainWindow(QMainWindow):
 
                 for i in range(len(axes) - 1):
                     axes[i].set_xticklabels([])
-                date_locator = mdates.AutoDateLocator()
-                axes[-1].xaxis.set_major_locator(date_locator)
-                axes[-1].xaxis.set_major_formatter(mdates.ConciseDateFormatter(date_locator))
-                axes[-1].tick_params(axis="x", labelrotation=0)
-                axes[-1].set_xlabel("Date")
+                format_datetime_axis_like_surf(fig, axes, times)
                 fig.subplots_adjust(left=0.10, bottom=0.14, right=0.98, top=0.95, hspace=0.05)
             plt.show()
             self._on_plot_succeeded("Time series")
