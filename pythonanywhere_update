@@ -12,3 +12,6 @@ workon surfs-up
 cd /home/mathewjowens/SURF
 git pull
 pip install -e .
+
+
+Then go to webapps, and hit Reload
