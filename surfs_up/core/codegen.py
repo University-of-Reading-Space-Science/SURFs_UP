@@ -66,6 +66,21 @@ def build_uniform_boundary_code(request: SimulationRequest) -> str:
     return "\n".join(lines)
 
 
+def _wsa_speed_reduction_lines() -> list[str]:
+    return [
+        "wsa_lon = np.linspace(0, 2*np.pi, len(v_boundary), endpoint=False)*u.rad",
+        "if solver == 'huxt':",
+        "    wsa_reduction = sin.map_v_inwards(",
+        "        v_boundary, 215*u.solRad, wsa_lon, rmin",
+        "    )",
+        "else:",
+        "    wsa_reduction = sin.map_v_inwards_parker(",
+        "        v_boundary, 215*u.solRad, wsa_lon, rmin",
+        "    )",
+        "v_boundary = wsa_reduction[0]",
+    ]
+
+
 def build_generated_code(request: SimulationRequest) -> str:
     """Build runnable code for the workflows exposed by both interfaces.
 
@@ -92,6 +107,7 @@ def build_generated_code(request: SimulationRequest) -> str:
         "",
         "# Define settings shared by the boundary preparation and model setup.",
         f"solver = {str(state['solver']).lower()!r}",
+        "acc_profile = 'huxt' if solver == 'huxt' else 'parker'",
         f"rmin = {float(state['rmin'])} * u.solRad",
         f"rmax = {float(state['rmax'])} * u.solRad",
         f"latitude = {float(state['latitude'])} * u.deg",
@@ -123,7 +139,7 @@ def build_generated_code(request: SimulationRequest) -> str:
                 ]
             )
         if ambient.get("decelerate_to_inner_boundary", True):
-            call = "sin.map_v_boundary_inwards(v_boundary, 30*u.solRad, rmin"
+            call = "sin.map_v_boundary_inwards(v_boundary, 30*u.solRad, rmin, acc_profile=acc_profile"
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lines.append(("v_boundary, b_boundary = " if include_bpol else "v_boundary = ") + call)
     elif source == "wsa":
@@ -135,16 +151,9 @@ def build_generated_code(request: SimulationRequest) -> str:
                 f"b_boundary = sin.get_WSA_br_long_profile(r{ambient['filepath']!r}, latitude)"
             )
         if ambient.get("apply_wsa_speed_reduction", False):
-            lines.extend(
-                [
-                    "wsa_lon = np.linspace(0, 2*np.pi, len(v_boundary), endpoint=False)*u.rad",
-                    "v_boundary, _ = sin.map_v_inwards(",
-                    "    v_boundary, 215*u.solRad, wsa_lon, rmin",
-                    ")",
-                ]
-            )
+            lines.extend(_wsa_speed_reduction_lines())
         if ambient.get("decelerate_to_inner_boundary", True):
-            call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin"
+            call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin, acc_profile=acc_profile"
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lhs = "v_boundary, b_boundary = " if include_bpol else "v_boundary = "
             lines.append(lhs + call)
@@ -158,16 +167,9 @@ def build_generated_code(request: SimulationRequest) -> str:
         if include_bpol:
             lines.append("b_boundary = sin.get_WSA_br_long_profile(wsa_path, latitude)")
         if ambient.get("apply_wsa_speed_reduction", False):
-            lines.extend(
-                [
-                    "wsa_lon = np.linspace(0, 2*np.pi, len(v_boundary), endpoint=False)*u.rad",
-                    "v_boundary, _ = sin.map_v_inwards(",
-                    "    v_boundary, 215*u.solRad, wsa_lon, rmin",
-                    ")",
-                ]
-            )
+            lines.extend(_wsa_speed_reduction_lines())
         if ambient.get("decelerate_to_inner_boundary", True):
-            call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin"
+            call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin, acc_profile=acc_profile"
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lhs = "v_boundary, b_boundary = " if include_bpol else "v_boundary = "
             lines.append(lhs + call)
@@ -176,7 +178,10 @@ def build_generated_code(request: SimulationRequest) -> str:
             f"v_boundary = sin.get_CorTom_long_profile(r{ambient['filepath']!r}, latitude)"
         )
         if ambient.get("decelerate_to_inner_boundary", True):
-            lines.append("v_boundary = sin.map_v_boundary_inwards(v_boundary, 8.0*u.solRad, rmin)")
+            lines.append(
+                "v_boundary = sin.map_v_boundary_inwards("
+                "v_boundary, 8.0*u.solRad, rmin, acc_profile=acc_profile)"
+            )
     elif source in {"insitu_backmapped", "omni"}:
         lines.insert(6, "import surf.surf_insitu as sinsit")
         if source == "insitu_backmapped":
@@ -283,7 +288,7 @@ def build_generated_code(request: SimulationRequest) -> str:
     for index, cme in enumerate(cmes):
         plasma = (
             [
-                f"cme_density=({float(cme['cme_density_pcc'])}/u.cm**3*const.m_p).to(u.kg/u.m**3)",
+                f"cme_density=({float(cme['cme_density_pcc'])}/u.cm**3*const.m_p).to_value(u.kg/u.m**3)",
                 f"cme_temperature={float(cme['cme_temperature_k'])}*u.K",
             ]
             if cme.get("plasma_mode") == "Absolute values"

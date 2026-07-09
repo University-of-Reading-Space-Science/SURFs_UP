@@ -366,6 +366,8 @@ def _ambient_preview_figure():
     source = request.form.get("ambient_source", "user_specified")
     latitude = _float("latitude", 0.0) * u.deg
     include_bpol = "include_bpol" in request.form
+    solver = request.form.get("solver", "huxt").strip().lower()
+    acc_profile = "huxt" if solver == "huxt" else "parker"
 
     def plot_mas():
         cr_num = int(_float("mas_cr_num", 2000))
@@ -383,6 +385,7 @@ def _ambient_preview_figure():
                     v_orig,
                     30.0 * u.solRad,
                     21.5 * u.solRad,
+                    acc_profile=acc_profile,
                     b_orig=b_orig,
                 )
                 if isinstance(mapped, tuple):
@@ -400,6 +403,7 @@ def _ambient_preview_figure():
                     v_orig,
                     30.0 * u.solRad,
                     21.5 * u.solRad,
+                    acc_profile=acc_profile,
                 )
             else:
                 v_mapped = v_orig
@@ -471,12 +475,14 @@ def _ambient_preview_figure():
         v_orig = profile_loader(path, latitude)
         if apply_speed_reduction:
             longitude = np.linspace(0.0, 2.0 * np.pi, len(v_orig), endpoint=False) * u.rad
-            v_reduced, _ = sin.map_v_inwards(
+            mapper = sin.map_v_inwards if solver == "huxt" else sin.map_v_inwards_parker
+            wsa_reduction = mapper(
                 v_orig,
                 215.0 * u.solRad,
                 longitude,
                 21.5 * u.solRad,
             )
+            v_reduced = wsa_reduction[0]
         else:
             v_reduced = v_orig
 
@@ -488,6 +494,7 @@ def _ambient_preview_figure():
                     v_reduced,
                     source_radius_rs * u.solRad,
                     21.5 * u.solRad,
+                    acc_profile=acc_profile,
                     b_orig=b_orig,
                 )
                 if isinstance(mapped, tuple):
@@ -504,6 +511,7 @@ def _ambient_preview_figure():
                     v_reduced,
                     source_radius_rs * u.solRad,
                     21.5 * u.solRad,
+                    acc_profile=acc_profile,
                 )
             else:
                 v_mapped = v_reduced
@@ -603,9 +611,15 @@ def _ambient_preview_figure():
             "wsa_speed_reduction",
         )
     if source == "wsa_iswa":
+        iswa_fallback = request.form.get("start_datetime", "")
+        iswa_value = (
+            iswa_fallback
+            if "iswa_use_model_start" in request.form
+            else request.form.get("iswa_map_date", "")
+        )
         required_for = _iswa_map_datetime(
-            request.form.get("iswa_map_date", ""),
-            request.form.get("start_datetime", ""),
+            iswa_value,
+            iswa_fallback,
         )
         path = sin.get_WSA_from_ISWA(required_for)
         return plot_file_source(
@@ -685,7 +699,10 @@ def _request_from_form() -> SimulationRequest:
             if map_time is not None:
                 start = map_time.strftime("%Y-%m-%d %H:%M:%S")
     elif source == "wsa_iswa":
-        iswa_datetime = _iswa_map_datetime(request.form.get("iswa_map_date", ""), start)
+        iswa_datetime = _iswa_map_datetime(
+            start if "iswa_use_model_start" in request.form else request.form.get("iswa_map_date", ""),
+            start,
+        )
         ambient.update(
             decelerate_to_inner_boundary="iswa_decelerate" in request.form,
             apply_wsa_speed_reduction="iswa_speed_reduction" in request.form,

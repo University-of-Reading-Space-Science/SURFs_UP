@@ -1,6 +1,7 @@
 """Flask adapter smoke tests."""
 
 import datetime
+import html
 from io import BytesIO
 
 import astropy.units as u
@@ -64,6 +65,36 @@ def test_preview_supports_wsa_iswa():
     assert b"get_WSA_from_ISWA" in response.data
 
 
+def test_preview_uses_model_start_for_wsa_iswa_map_time_when_checked():
+    client = create_app({"TESTING": True}).test_client()
+    response = client.post(
+        "/",
+        data={
+            "action": "preview",
+            "solver": "huxt",
+            "ambient_source": "wsa_iswa",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "speed_kms": "400",
+            "start_datetime": "2026-07-03T12:00",
+            "iswa_map_date": "2026-07-07T09:30:00",
+            "iswa_use_model_start": "on",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "315",
+            "lon_max": "45",
+            "frame": "sidereal",
+        },
+    )
+
+    body = html.unescape(response.get_data(as_text=True))
+    assert response.status_code == 200
+    assert "iswa_map_time = datetime.datetime.fromisoformat('2026-07-03T12:00:00')" in body
+    assert "2026-07-07T09:30:00" not in body
+
+
 def test_preview_passes_advanced_model_grid_settings():
     client = create_app({"TESTING": True}).test_client()
     response = client.post(
@@ -104,6 +135,8 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b"Show Terminal Output" in response.data
     assert b'id="show-terminal-output"' in response.data
     assert b'id="run-surf-button"' in response.data
+    assert b'id="iswa-map-date"' in response.data
+    assert b'name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked' in response.data
     assert b"busy-button" in response.data
     assert b"Grabbing and processing input data" in response.data
     assert b"/run-progress/" in response.data
@@ -129,7 +162,7 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'name="track_cmes" type="checkbox"' in response.data
     assert b'name="track_cmes" type="checkbox" checked' not in response.data
     assert b'<option value="forecast">Forecast</option>' in response.data
-    assert b"Reconstruction (requires 27days of data after run end time)" in response.data
+    assert b"Reconstruction (requires 27 days of data after run end time)" in response.data
     assert b"Cone CME lists (typically for model inner boundary at 0.1 AU)" in response.data
     assert b"Configure, run and explore SURF simulations" not in response.data
     assert b'name="wsa_speed_reduction" type="checkbox" checked' in response.data
@@ -234,14 +267,14 @@ def test_ambient_preview_endpoint_returns_png_for_requested_sources(monkeypatch,
     monkeypatch.setattr(
         sin,
         "map_v_boundary_inwards",
-        lambda v_orig, source_radius, inner_radius, b_orig=None: (
+        lambda v_orig, source_radius, inner_radius, b_orig=None, **kwargs: (
             (v_orig * 0.8, np.asarray(b_orig) * 0.7) if b_orig is not None else v_orig * 0.8
         ),
     )
     monkeypatch.setattr(
         sin,
         "map_v_inwards",
-        lambda v_orig, source_radius, longitude, inner_radius: (v_orig * 0.9, None),
+        lambda v_orig, source_radius, longitude, inner_radius: (v_orig * 0.9, None, None, None),
     )
     monkeypatch.setattr(
         sin,
@@ -269,3 +302,78 @@ def test_ambient_preview_endpoint_returns_png_for_requested_sources(monkeypatch,
 
     assert response.status_code == 200
     assert response.mimetype == "image/png"
+
+
+def test_ambient_preview_uses_parker_wsa_reduction_for_non_huxt(monkeypatch):
+    import surf.surf_inputs as sin
+
+    calls = []
+    speed_map = np.arange(12, dtype=float).reshape(3, 4) * u.km / u.s
+    longitudes = np.linspace(0, 360, 4, endpoint=False) * u.deg
+    latitudes = np.linspace(-30, 30, 3) * u.deg
+    profile = np.linspace(300, 500, 4) * u.km / u.s
+
+    monkeypatch.setattr(sin, "get_WSA_maps", lambda path: (speed_map, longitudes, latitudes))
+    monkeypatch.setattr(sin, "get_WSA_long_profile", lambda path, latitude: profile)
+    monkeypatch.setattr(sin, "get_WSA_br_long_profile", lambda path, latitude: np.ones(4))
+    monkeypatch.setattr(sin, "map_v_boundary_inwards", lambda v_orig, *args, **kwargs: v_orig)
+    monkeypatch.setattr(
+        sin,
+        "map_v_inwards",
+        lambda v_orig, source_radius, longitude, inner_radius: calls.append("huxt") or (v_orig, None, None, None),
+    )
+    monkeypatch.setattr(
+        sin,
+        "map_v_inwards_parker",
+        lambda v_orig, source_radius, longitude, inner_radius: calls.append("parker") or (v_orig, None, None, None),
+        raising=False,
+    )
+
+    response = create_app({"TESTING": True}).test_client().post(
+        "/ambient-plot.png",
+        data={
+            "solver": "hydro",
+            "ambient_source": "wsa",
+            "latitude": "0",
+            "wsa_decelerate": "on",
+            "wsa_speed_reduction": "on",
+            "wsa_file": (BytesIO(b"test data"), "sample.fits"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert calls == ["parker"]
+
+
+def test_ambient_preview_passes_parker_acc_profile_for_non_huxt_boundary_mapping(monkeypatch):
+    import surf.surf_inputs as sin
+
+    acc_profiles = []
+    speed_map = np.arange(12, dtype=float).reshape(3, 4) * u.km / u.s
+    longitudes = np.linspace(0, 360, 4, endpoint=False) * u.deg
+    latitudes = np.linspace(-30, 30, 3) * u.deg
+    profile = np.linspace(300, 500, 4) * u.km / u.s
+
+    monkeypatch.setattr(sin, "get_MAS_vr_map", lambda cr_num: (speed_map, longitudes, latitudes))
+    monkeypatch.setattr(sin, "get_MAS_long_profile", lambda cr_num, latitude: profile)
+    monkeypatch.setattr(
+        sin,
+        "map_v_boundary_inwards",
+        lambda v_orig, *args, **kwargs: acc_profiles.append(kwargs.get("acc_profile")) or v_orig,
+    )
+
+    response = create_app({"TESTING": True}).test_client().post(
+        "/ambient-plot.png",
+        data={
+            "solver": "hydro",
+            "ambient_source": "mas",
+            "latitude": "0",
+            "mas_cr_num": "2000",
+            "mas_decelerate": "on",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert acc_profiles == ["parker"]

@@ -162,6 +162,7 @@ class MasAmbientTab(QWidget):
         super().__init__()
         self.model_inner_boundary_rs = 21.5
         self.model_latitude_deg = 0.0
+        self.model_solver = "huxt"
         self.include_bpol = False
 
         layout = QVBoxLayout()
@@ -199,6 +200,9 @@ class MasAmbientTab(QWidget):
     def set_model_latitude(self, latitude_deg: float):
         self.model_latitude_deg = float(latitude_deg)
 
+    def set_model_solver(self, solver_name: str):
+        self.model_solver = str(solver_name).strip().lower()
+
     def set_include_bpol(self, include_bpol: bool):
         self.include_bpol = bool(include_bpol)
 
@@ -225,7 +229,13 @@ class MasAmbientTab(QWidget):
             speed_map, longitudes, latitudes = sin.get_MAS_vr_map(cr_num)
             v_orig = sin.get_MAS_long_profile(cr_num, latitude)
             if self.decelerate_toggle.isChecked():
-                v_mapped = sin.map_v_boundary_inwards(v_orig, 30.0 * u.solRad, self.model_inner_boundary_rs * u.solRad)
+                acc_profile = "huxt" if self.model_solver == "huxt" else "parker"
+                v_mapped = sin.map_v_boundary_inwards(
+                    v_orig,
+                    30.0 * u.solRad,
+                    self.model_inner_boundary_rs * u.solRad,
+                    acc_profile=acc_profile,
+                )
             else:
                 v_mapped = v_orig
             lon = np.linspace(0.0, 360.0, len(v_orig), endpoint=False)
@@ -472,6 +482,7 @@ class FileAmbientTab(QWidget):
         self.source_radius_rs = source_radius_rs
         self.model_inner_boundary_rs = 21.5
         self.model_latitude_deg = 0.0
+        self.model_solver = "huxt"
         self.model_start_datetime = datetime.datetime.now(datetime.UTC).replace(tzinfo=None, microsecond=0)
         self.include_bpol = False
         self.last_parsed_time = None
@@ -598,6 +609,10 @@ class FileAmbientTab(QWidget):
         """Set model latitude used for ambient profile extraction."""
         self.model_latitude_deg = float(latitude_deg)
 
+    def set_model_solver(self, solver_name: str):
+        """Set solver used for solver-specific WSA speed reduction."""
+        self.model_solver = str(solver_name).strip().lower()
+
     def set_model_start_datetime(self, dt: datetime.datetime):
         """Set model start time used by download-backed ambient sources."""
         if dt.tzinfo is not None:
@@ -668,16 +683,23 @@ class FileAmbientTab(QWidget):
                 longitude = np.linspace(
                     0.0, 2.0 * np.pi, len(v_orig), endpoint=False
                 ) * u.rad
-                v_reduced, _ = sin.map_v_inwards(
+                mapper = (
+                    sin.map_v_inwards
+                    if self.model_solver == "huxt"
+                    else sin.map_v_inwards_parker
+                )
+                wsa_reduction = mapper(
                     v_orig,
                     215.0 * u.solRad,
                     longitude,
                     self.model_inner_boundary_rs * u.solRad,
                 )
+                v_reduced = wsa_reduction[0]
             else:
                 v_reduced = v_orig
 
             include_bpol_plot = self.include_bpol and (self.br_profile_loader is not None)
+            acc_profile = "huxt" if self.model_solver == "huxt" else "parker"
             if include_bpol_plot:
                 b_orig = self.br_profile_loader(self.selected_file, latitude)
                 if map_to_inner:
@@ -685,6 +707,7 @@ class FileAmbientTab(QWidget):
                         v_reduced,
                         source_radius_rs * u.solRad,
                         self.model_inner_boundary_rs * u.solRad,
+                        acc_profile=acc_profile,
                         b_orig=b_orig,
                     )
                     if isinstance(mapped, tuple):
@@ -701,6 +724,7 @@ class FileAmbientTab(QWidget):
                         v_reduced,
                         source_radius_rs * u.solRad,
                         self.model_inner_boundary_rs * u.solRad,
+                        acc_profile=acc_profile,
                     )
                 else:
                     v_mapped = v_reduced
@@ -832,16 +856,27 @@ class WsaAmbientTab(FileAmbientTab):
             source_radius_rs=21.5,
         )
         if use_iswa_download:
-            self.iswa_date_edit = QDateEdit()
-            self.iswa_date_edit.setCalendarPopup(True)
-            self.iswa_date_edit.setDisplayFormat("yyyy-MM-dd")
-            self.iswa_date_edit.setDate(QDateTime.currentDateTimeUtc().date())
-            self.iswa_date_edit.dateChanged.connect(self._on_iswa_date_changed)
-            self.file_form.insertRow(0, "Map date", self.iswa_date_edit)
+            self.iswa_datetime_edit = QDateTimeEdit()
+            self.iswa_datetime_edit.setCalendarPopup(True)
+            self.iswa_datetime_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+            self.iswa_datetime_edit.setDateTime(QDateTime(self.model_start_datetime))
+            self.iswa_datetime_edit.dateTimeChanged.connect(self._on_iswa_datetime_changed)
+            self.use_model_start_for_iswa_toggle = QCheckBox("Use model start time")
+            self.use_model_start_for_iswa_toggle.setChecked(True)
+            self.use_model_start_for_iswa_toggle.toggled.connect(
+                self._on_use_model_start_for_iswa_toggled
+            )
+            iswa_datetime_row = QWidget()
+            iswa_datetime_layout = QHBoxLayout(iswa_datetime_row)
+            iswa_datetime_layout.setContentsMargins(0, 0, 0, 0)
+            iswa_datetime_layout.addWidget(self.iswa_datetime_edit, 1)
+            iswa_datetime_layout.addWidget(self.use_model_start_for_iswa_toggle)
+            self.file_form.insertRow(0, "Map date/time", iswa_datetime_row)
             self.file_form.setRowVisible(self.file_row, False)
             self.select_button.setText("Download required map")
             self.plot_button.setText("Check data availability and plot")
             self.detected_time_label.setText("No ISWA map downloaded yet.")
+            self._sync_iswa_datetime_state()
 
     def select_file(self):
         """Download the ISWA map or select a local WSA file."""
@@ -889,20 +924,39 @@ class WsaAmbientTab(FileAmbientTab):
     def set_model_start_datetime(self, dt: datetime.datetime):
         """Track the model start used by other download-backed ambient sources."""
         super().set_model_start_datetime(dt)
+        if self.use_iswa_download and self.use_model_start_for_iswa_toggle.isChecked():
+            self._set_iswa_datetime(dt)
 
-    def _on_iswa_date_changed(self, _date=None):
+    def _set_iswa_datetime(self, dt: datetime.datetime):
+        """Set the ISWA request datetime without double-emitting change handling."""
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        self.iswa_datetime_edit.blockSignals(True)
+        self.iswa_datetime_edit.setDateTime(QDateTime(dt))
+        self.iswa_datetime_edit.blockSignals(False)
+        self._on_iswa_datetime_changed()
+
+    def _sync_iswa_datetime_state(self):
+        """Disable manual ISWA datetime edits while synced to model start."""
+        synced = self.use_model_start_for_iswa_toggle.isChecked()
+        self.iswa_datetime_edit.setEnabled(not synced)
+        if synced:
+            self._set_iswa_datetime(self.model_start_datetime)
+
+    def _on_use_model_start_for_iswa_toggled(self, _enabled=None):
+        """Update ISWA map time mode when the sync checkbox changes."""
+        self._sync_iswa_datetime_state()
+
+    def _on_iswa_datetime_changed(self, _datetime=None):
         """Clear a downloaded map when its requested ISWA date changes."""
         self.selected_file = ""
         self.file_edit.clear()
         self.last_parsed_time = None
-        self.detected_time_label.setText("No ISWA map downloaded for this date.")
+        self.detected_time_label.setText("No ISWA map downloaded for this date/time.")
 
     def _iswa_requested_datetime(self):
-        """Treat a selected date as its end so the newest map that day is eligible."""
-        return datetime.datetime.combine(
-            self.iswa_date_edit.date().toPyDate(),
-            datetime.time(23, 59, 59),
-        )
+        """Return the selected ISWA request datetime."""
+        return self.iswa_datetime_edit.dateTime().toPyDateTime().replace(tzinfo=None)
 
     def get_state(self):
         """Return WSA settings, including the independently selected ISWA map date."""
@@ -1061,6 +1115,13 @@ class AmbientSolarWindTab(QWidget):
         self.wsa_tab.set_model_latitude(latitude_deg)
         self.wsa_iswa_tab.set_model_latitude(latitude_deg)
         self.cortom_tab.set_model_latitude(latitude_deg)
+
+    def set_model_solver(self, solver_name: str):
+        """Propagate solver selection to source tabs with solver-specific loading."""
+        self.mas_tab.set_model_solver(solver_name)
+        self.wsa_tab.set_model_solver(solver_name)
+        self.wsa_iswa_tab.set_model_solver(solver_name)
+        self.cortom_tab.set_model_solver(solver_name)
 
     def set_model_start_datetime(self, dt: datetime.datetime):
         """Propagate model start time to sources that depend on it."""
@@ -2257,6 +2318,7 @@ class SurfMainWindow(QMainWindow):
             self._on_model_start_datetime_input_changed
         )
         self.model_tab.include_bpol_toggle.toggled.connect(self.ambient_tab.set_include_bpol)
+        self.model_tab.solver_combo.currentTextChanged.connect(self.ambient_tab.set_model_solver)
         self.model_tab.solver_combo.currentTextChanged.connect(self.cme_tab.set_solver)
         self.model_tab.solver_combo.currentTextChanged.connect(self.movies_tab.set_solver)
         self.model_tab.start_datetime_updated.connect(self.cme_tab.set_model_start_datetime)
@@ -2268,6 +2330,7 @@ class SurfMainWindow(QMainWindow):
         self._on_1d_mode_changed(self.model_tab.one_d_toggle.isChecked())
         self.ambient_tab.set_model_inner_boundary(self.model_tab.rmin_spin.value())
         self.ambient_tab.set_model_latitude(self.model_tab.latitude_spin.value())
+        self.ambient_tab.set_model_solver(self.model_tab.solver_combo.currentText())
         self.ambient_tab.set_model_start_datetime(self.model_tab.start_datetime.dateTime().toPyDateTime())
         self.ambient_tab.set_include_bpol(self.model_tab.include_bpol_toggle.isChecked())
         self.cme_tab.set_model_start_datetime(self.model_tab.start_datetime.dateTime().toPyDateTime())

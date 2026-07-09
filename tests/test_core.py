@@ -158,6 +158,29 @@ def test_general_generator_supports_cmes():
     assert "model.solve(cme_list" in code
 
 
+def test_generated_code_passes_absolute_cme_density_as_value():
+    simulation = request()
+    simulation.model["solver"] = "hydro"
+    simulation.cmes.append(
+        {
+            "t_launch_day": 0.5,
+            "longitude": 0,
+            "latitude": 0,
+            "speed": 800,
+            "width": 60,
+            "plasma_mode": "Absolute values",
+            "cme_density_pcc": 100,
+            "cme_temperature_k": 100000,
+        }
+    )
+
+    code = build_generated_code(simulation)
+
+    compile(code, "<generated>", "exec")
+    assert "cme_density=(100.0/u.cm**3*const.m_p).to_value(u.kg/u.m**3)" in code
+    assert "cme_density=(100.0/u.cm**3*const.m_p).to(u.kg/u.m**3)" not in code
+
+
 def test_generated_code_supports_wsa_iswa():
     simulation = request()
     simulation.ambient = {
@@ -174,7 +197,28 @@ def test_generated_code_supports_wsa_iswa():
     assert "get_WSA_from_ISWA(iswa_map_time)" in code
     assert "get_WSA_long_profile(wsa_path" in code
     assert "map_v_inwards" in code
+    assert "acc_profile = 'huxt' if solver == 'huxt' else 'parker'" in code
+    assert "acc_profile=acc_profile" in code
     assert code.index("map_v_inwards") < code.index("map_v_boundary_inwards")
+
+
+def test_generated_code_uses_parker_wsa_reduction_for_non_huxt():
+    simulation = request()
+    simulation.model["solver"] = "hydro"
+    simulation.ambient = {
+        "source": "wsa_iswa",
+        "decelerate_to_inner_boundary": True,
+        "apply_wsa_speed_reduction": True,
+        "iswa_map_datetime": "2024-05-06T00:00:00",
+    }
+
+    code = build_generated_code(simulation)
+
+    compile(code, "<generated>", "exec")
+    assert "if solver == 'huxt':" in code
+    assert "sin.map_v_inwards_parker" in code
+    assert "sin.map_v_inwards(" in code
+    assert "v_boundary = wsa_reduction[0]" in code
 
 
 def test_generated_code_passes_longitude_range_to_omni_backmapped():

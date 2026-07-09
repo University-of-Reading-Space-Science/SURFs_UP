@@ -97,6 +97,9 @@
       .group-box { @apply col-span-full rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5; }
       .group-title { @apply mb-4 text-base font-semibold text-slate-900; }
       .control-row { @apply grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3; }
+      .datetime-sync-row { @apply flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-end sm:gap-6; }
+      .datetime-sync-row > label:first-child { @apply min-w-0 flex-1; }
+      .datetime-sync-row .sync-checkbox { @apply shrink-0 whitespace-nowrap pb-2; }
       .source-choice { @apply flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200
                               bg-white px-3 py-3 text-sm hover:border-cyan-300; }
       .source-choice input[type="radio"] { @apply mt-0.5 shrink-0; }
@@ -112,6 +115,7 @@
       .speed-profile-editor { @apply relative w-full max-w-4xl rounded-xl border border-slate-200 bg-white p-3 shadow-inner; }
       .speed-profile-canvas { @apply block h-64 w-full cursor-crosshair rounded-lg bg-white; touch-action: none; }
       .speed-axis-label { writing-mode: vertical-rl; transform: rotate(180deg); }
+      input:disabled, select:disabled, textarea:disabled { @apply cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 shadow-none; }
       .brand-title {
         font-family: "Segoe UI Variable Display", "Aptos Display", "Inter", "Segoe UI", sans-serif;
         font-weight: 800;
@@ -297,7 +301,10 @@
     <fieldset class="group-box source-panel active" data-source-panel="wsa_iswa">
       <legend class="group-title px-1">WSA map from ISWA</legend>
       <div class="control-row">
-        <label>Map date/time<input name="iswa_map_date" type="datetime-local" value="{{ default_iswa_map_datetime }}"></label>
+        <div class="datetime-sync-row">
+          <label>Map date/time<input name="iswa_map_date" id="iswa-map-date" type="datetime-local" step="1" value="{{ default_start }}"></label>
+          <label class="sync-checkbox"><span><input name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked> Use model start time</span></label>
+        </div>
         <p class="wide text-slate-600">Downloads the newest available WSA map at or before the selected map date/time.</p>
         <label><span><input name="iswa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
         <label><span><input name="iswa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
@@ -1474,6 +1481,7 @@
       }
       showAmbientPanel(ambientSourceInput.value || "wsa_iswa");
       syncLongitudeControls();
+      syncIswaMapDateState();
       if (invalidateRun) invalidateCompletedRun();
     }
     let runInProgress = false;
@@ -1559,6 +1567,8 @@
     const modelLongitudeRow = document.getElementById("model-longitude-row");
     const modelLongitudeStart = document.querySelector('[name="lon_min"]');
     const modelLongitudeStop = document.querySelector('[name="lon_max"]');
+    const iswaMapDate = document.getElementById("iswa-map-date");
+    const iswaUseModelStart = document.getElementById("iswa-use-model-start");
     const cmeLaunchDay = document.getElementById("cme-launch-day");
     const cmeLaunchDatetime = document.getElementById("cme-launch-datetime");
 
@@ -1575,6 +1585,15 @@
         utcInputDate(cmeLaunchDatetime) - utcInputDate(modelStartInput)
       ) / 86400000;
       if (Number.isFinite(offset)) cmeLaunchDay.value = offset.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    }
+    function syncIswaMapDateFromModelStart() {
+      if (!iswaMapDate || !iswaUseModelStart || !iswaUseModelStart.checked) return;
+      iswaMapDate.value = modelStartInput.value;
+    }
+    function syncIswaMapDateState() {
+      if (!iswaMapDate || !iswaUseModelStart) return;
+      iswaMapDate.disabled = iswaUseModelStart.checked;
+      syncIswaMapDateFromModelStart();
     }
     function syncLongitudeControls() {
       const disabled = Boolean(modelIs1D && modelIs1D.checked);
@@ -1595,6 +1614,7 @@
       modelCrLongitude.value = coordinates.cr_lon.toFixed(2);
       modelLatitude.value = coordinates.earth_latitude.toFixed(2);
       syncCmeDatetimeFromDay();
+      syncIswaMapDateFromModelStart();
       clearStaleDonkiCmes();
     }
     function clearStaleDonkiCmes() {
@@ -1607,8 +1627,13 @@
         "Run interval changed; reload the cone CME list from DONKI.";
     }
     modelStartInput.addEventListener("change", () => {
+      syncIswaMapDateFromModelStart();
       updateCoordinates({datetime: modelStartInput.value}).catch(console.error);
     });
+    if (iswaUseModelStart) {
+      iswaUseModelStart.addEventListener("change", syncIswaMapDateState);
+      syncIswaMapDateState();
+    }
     [modelCrNumber, modelCrLongitude].forEach(input => {
       input.addEventListener("change", () => {
         updateCoordinates({
