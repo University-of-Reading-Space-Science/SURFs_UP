@@ -165,12 +165,7 @@
       {% else %}Ready{% endif %}
     </p>
     <div class="button-group">
-      {% if code %}
       <button type="button" class="secondary-button" id="show-generated-code">Show Code</button>
-      {% else %}
-      <button type="submit" form="simulation-form" class="secondary-button"
-              name="action" value="preview">Show Code</button>
-      {% endif %}
       <button type="button" class="secondary-button" id="show-terminal-output"
               {% if not result %}disabled{% endif %}>
         Show Terminal Output
@@ -815,31 +810,32 @@
       }
     </script>
   {% endif %}
-  {% if code %}
-    <dialog id="generated-code-dialog">
-      <div class="p-5 sm:p-7">
-        <div class="mb-4 flex items-center justify-between gap-3">
-          <h2 class="m-0">Generated Code</h2>
-          <div class="button-group">
-            <button type="button" class="secondary-button" id="copy-generated-code">Copy Code</button>
-            <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Close</button>
-          </div>
+  <dialog id="generated-code-dialog">
+    <div class="p-5 sm:p-7">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="m-0">Generated Code</h2>
+        <div class="button-group">
+          <button type="button" class="secondary-button" id="copy-generated-code">Copy Code</button>
+          <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Close</button>
         </div>
-        <pre>{{ code }}</pre>
       </div>
-    </dialog>
-  {% endif %}
+      <pre>{{ code or "" }}</pre>
+    </div>
+  </dialog>
   <script>
     const terminalOutputButton = document.getElementById("show-terminal-output");
     const terminalOutputDialog = document.getElementById("terminal-output-dialog");
     if (terminalOutputButton && terminalOutputDialog) {
       terminalOutputButton.addEventListener("click", () => terminalOutputDialog.showModal());
     }
+    const runForm = document.querySelector('form[method="post"]');
     const generatedCodeDialog = document.getElementById("generated-code-dialog");
     const generatedCodeButton = document.getElementById("show-generated-code");
     const copyGeneratedCodeButton = document.getElementById("copy-generated-code");
     const generatedCodePre = generatedCodeDialog ? generatedCodeDialog.querySelector("pre") : null;
-    const baseGeneratedCodeText = generatedCodePre ? generatedCodePre.textContent : "";
+    let baseGeneratedCodeText = generatedCodePre ? generatedCodePre.textContent : "";
+    let generatedCodeUpdateTimer = null;
+    let generatedCodeRequestId = 0;
     const plotCodeHistory = [];
 
     function pyBool(value) {
@@ -863,6 +859,52 @@
     function recordPlotCode(codeText) {
       plotCodeHistory.push(codeText.trim());
       refreshGeneratedCodeDialog();
+    }
+
+    async function updateGeneratedCode(showBusy = false) {
+      if (!generatedCodePre || !runForm) return;
+      const requestId = ++generatedCodeRequestId;
+      if (showBusy && !baseGeneratedCodeText) {
+        generatedCodePre.textContent = "Generating code...";
+      }
+      const formData = new FormData(runForm);
+      formData.set("action", "preview");
+      try {
+        const response = await fetch(`{{ url_for("generated_code") }}`, {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) {
+          const message = (await response.text()).replace(/<[^>]+>/g, " ").trim();
+          throw new Error(message || `HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (requestId !== generatedCodeRequestId) return;
+        baseGeneratedCodeText = payload.code || "";
+        refreshGeneratedCodeDialog();
+      } catch (error) {
+        if (requestId !== generatedCodeRequestId) return;
+        baseGeneratedCodeText = `# Could not generate code for the current settings.\n# ${error.message}`;
+        refreshGeneratedCodeDialog();
+      }
+    }
+
+    function scheduleGeneratedCodeUpdate() {
+      if (!generatedCodePre || !runForm) return;
+      window.clearTimeout(generatedCodeUpdateTimer);
+      generatedCodeUpdateTimer = window.setTimeout(() => {
+        updateGeneratedCode(false);
+      }, 350);
+    }
+
+    function resetGeneratedCodeForCurrentState() {
+      plotCodeHistory.length = 0;
+      baseGeneratedCodeText = "";
+      generatedCodeRequestId += 1;
+      if (generatedCodePre) {
+        generatedCodePre.textContent = "";
+      }
+      scheduleGeneratedCodeUpdate();
     }
 
     async function copyGeneratedCode() {
@@ -982,6 +1024,7 @@
     }
 
     function showGeneratedCodeDialog() {
+      updateGeneratedCode(true);
       refreshGeneratedCodeDialog();
       if (generatedCodeDialog) generatedCodeDialog.showModal();
     }
@@ -1342,6 +1385,7 @@
         row.addEventListener("dblclick", () => openCmeEditor(index));
         cmeList.appendChild(row);
       });
+      scheduleGeneratedCodeUpdate();
     }
     function cmeFromEditor() {
       return {
@@ -1472,7 +1516,6 @@
       }
     });
 
-    const runForm = document.querySelector('form[method="post"]');
     let runIsCurrent = {{ "true" if run_id else "false" }};
     function hidePostRunTabs() {
       ["plots", "movies"].forEach(name => {
@@ -1489,6 +1532,7 @@
       if (!runIsCurrent) return;
       runIsCurrent = false;
       hidePostRunTabs();
+      resetGeneratedCodeForCurrentState();
       const runButton = document.getElementById("run-surf-button");
       runButton.classList.remove("success-button", "busy-button");
       runButton.textContent = "Run SURF";
@@ -1497,6 +1541,8 @@
     }
     runForm.addEventListener("input", invalidateCompletedRun);
     runForm.addEventListener("change", invalidateCompletedRun);
+    runForm.addEventListener("input", scheduleGeneratedCodeUpdate);
+    runForm.addEventListener("change", scheduleGeneratedCodeUpdate);
     function captureConfiguration() {
       const controls = {};
       runForm.querySelectorAll("input[name]:not([type=file]), select[name], textarea[name]")
@@ -1596,7 +1642,6 @@
     const submittedCmes = {{ submitted_cmes|tojson }};
     if (submittedCmes) {
       cmes.splice(0, cmes.length, ...submittedCmes);
-      if (cmes.length) grabDonkiAtRunStart.checked = false;
       selectedCmeIndex = -1;
       renderCmes();
       if (submittedCmes.some(cme => cme.source === "donki")) {

@@ -876,6 +876,15 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"datetime": None})
         return jsonify({"datetime": map_time.strftime("%Y-%m-%dT%H:%M:%S")})
 
+    @app.post("/generated-code")
+    def generated_code():
+        """Return generated Python code for the current form state."""
+        try:
+            simulation = _request_from_form()
+            return jsonify({"code": build_generated_code(simulation)})
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            abort(400, str(exc))
+
     @app.route("/", methods=["GET", "POST"])
     def index():
         context = {

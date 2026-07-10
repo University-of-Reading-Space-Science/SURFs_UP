@@ -207,16 +207,53 @@ def test_template_hides_post_run_tabs_when_run_becomes_stale():
     assert 'if (["plots", "movies"].includes(activeTab))' in template
     assert 'activateTab("model")' in template
     assert "hidePostRunTabs();" in template
+    assert "function resetGeneratedCodeForCurrentState()" in template
+    assert "plotCodeHistory.length = 0;" in template
+    assert 'generatedCodePre.textContent = "";' in template
+    assert "resetGeneratedCodeForCurrentState();" in template
 
 
 def test_generated_code_dialog_has_copy_button():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
 
+    assert 'id="show-generated-code"' in template
+    assert 'form="simulation-form" class="secondary-button"' not in template
+    assert 'id="generated-code-dialog"' in template
     assert 'id="copy-generated-code"' in template
+    assert "async function updateGeneratedCode" in template
+    assert 'fetch(`{{ url_for("generated_code") }}`' in template
+    assert 'runForm.addEventListener("input", scheduleGeneratedCodeUpdate)' in template
     assert "async function copyGeneratedCode()" in template
     assert "navigator.clipboard.writeText(codeText)" in template
     assert "document.execCommand(\"copy\")" in template
     assert 'copyGeneratedCodeButton.addEventListener("click", copyGeneratedCode)' in template
+
+
+def test_generated_code_endpoint_reflects_current_form_state():
+    client = create_app({"TESTING": True}).test_client()
+    base_data = {
+        "action": "preview",
+        "ambient_source": "user_specified",
+        "solver": "huxt",
+        "rmin": "21.5",
+        "latitude": "0",
+        "simtime_days": "5",
+        "speed_kms": "400",
+        "start_datetime": "2026-07-03T12:00",
+        "cr_num": "2300",
+        "cr_lon_init_deg": "0",
+        "lon_min": "315",
+        "lon_max": "45",
+        "frame": "sidereal",
+    }
+
+    first = client.post("/generated-code", data={**base_data, "rmax": "240"})
+    second = client.post("/generated-code", data={**base_data, "rmax": "300"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert "r_max=240.0 * u.solRad" in first.get_json()["code"]
+    assert "r_max=300.0 * u.solRad" in second.get_json()["code"]
 
 
 def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
@@ -295,6 +332,11 @@ def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
     assert b"const submittedCmes =" in response.data
     assert b"2026-test-donki" in response.data
     assert b"Loaded ${submittedCmes.filter" in response.data
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    submitted_block = template.split("const submittedCmes =", 1)[1].split(
+        'document.getElementById("save-configuration")', 1
+    )[0]
+    assert "grabDonkiAtRunStart.checked = false" not in submitted_block
 
 
 def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):
