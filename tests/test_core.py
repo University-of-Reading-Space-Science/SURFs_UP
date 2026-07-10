@@ -158,6 +158,60 @@ def test_general_generator_supports_cmes():
     assert "model.solve(cme_list" in code
 
 
+def test_generated_code_fetches_donki_at_runtime_when_requested():
+    simulation = request()
+    simulation.model["grab_donki_at_run_start"] = True
+    simulation.cmes.extend(
+        [
+            {
+                "t_launch_day": 0.25,
+                "longitude": 10,
+                "latitude": 2,
+                "speed": 900,
+                "width": 45,
+                "source": "donki",
+                "donki_id": "downloaded-at-run",
+            },
+            {
+                "t_launch_day": 0.5,
+                "longitude": 0,
+                "latitude": 0,
+                "speed": 800,
+                "width": 60,
+                "source": "manual",
+            },
+        ]
+    )
+
+    code = build_generated_code(simulation)
+
+    compile(code, "<generated>", "exec")
+    assert "sin.get_DONKI_cme_list(model, start_time, donki_end_time)" in code
+    assert "downloaded-at-run" not in code
+    assert code.count("s.ConeCME") == 1
+
+
+def test_generated_code_includes_preloaded_donki_list_when_runtime_fetch_is_off():
+    simulation = request()
+    simulation.cmes.append(
+        {
+            "t_launch_day": 0.25,
+            "longitude": 10,
+            "latitude": 2,
+            "speed": 900,
+            "width": 45,
+            "source": "donki",
+            "donki_id": "preloaded-donki",
+        }
+    )
+
+    code = build_generated_code(simulation)
+
+    compile(code, "<generated>", "exec")
+    assert "sin.get_DONKI_cme_list" not in code
+    assert "s.ConeCME" in code
+
+
 def test_generated_code_passes_absolute_cme_density_as_value():
     simulation = request()
     simulation.model["solver"] = "hydro"

@@ -92,6 +92,7 @@ def build_generated_code(request: SimulationRequest) -> str:
     if (
         ambient["source"] == "user_specified"
         and not cmes
+        and not state.get("grab_donki_at_run_start")
         and not state.get("streak_lines_enabled")
         and not state.get("include_bpol")
     ):
@@ -285,7 +286,19 @@ def build_generated_code(request: SimulationRequest) -> str:
         ]
     )
     lines.append("cme_list = []")
-    for index, cme in enumerate(cmes):
+    if state.get("grab_donki_at_run_start"):
+        lines.extend(
+            [
+                "donki_end_time = start_time + datetime.timedelta(days=simtime.to_value(u.day))",
+                "cme_list.extend(sin.get_DONKI_cme_list(model, start_time, donki_end_time))",
+            ]
+        )
+    literal_cmes = [
+        cme
+        for cme in cmes
+        if not (state.get("grab_donki_at_run_start") and cme.get("source") == "donki")
+    ]
+    for index, cme in enumerate(literal_cmes):
         plasma = (
             [
                 f"cme_density=({float(cme['cme_density_pcc'])}/u.cm**3*const.m_p).to_value(u.kg/u.m**3)",

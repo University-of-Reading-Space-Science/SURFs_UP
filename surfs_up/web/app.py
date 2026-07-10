@@ -745,11 +745,14 @@ def _request_from_form() -> SimulationRequest:
     cmes = json.loads(cmes_text) if cmes_text else []
     if not isinstance(cmes, list):
         raise ValueError("CME JSON must contain a list of CME objects.")
+    grab_donki_at_run_start = (
+        "grab_donki_at_run_start" in request.form
+        and source != "omni"
+        and abs(_float("rmin", 21.5) - 21.5) <= 1.0e-9
+    )
     if (
         request.form.get("action") == "run"
-        and source != "omni"
-        and "grab_donki_at_run_start" in request.form
-        and abs(_float("rmin", 21.5) - 21.5) <= 1.0e-9
+        and grab_donki_at_run_start
     ):
         model_start = datetime.datetime.fromisoformat(start.replace("T", " "))
         cmes = [cme for cme in cmes if cme.get("source") != "donki"]
@@ -801,6 +804,7 @@ def _request_from_form() -> SimulationRequest:
             "frame": request.form.get("frame", "sidereal"),
             "include_bpol": "include_bpol" in request.form,
             "track_cmes": "track_cmes" in request.form,
+            "grab_donki_at_run_start": grab_donki_at_run_start,
             "streak_lines_enabled": "streak_lines_enabled" in request.form,
             "streak_spacing_deg": _float("streak_spacing_deg", 10.0),
             "simtime_days": _float("simtime_days", 10.0),

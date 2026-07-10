@@ -322,6 +322,43 @@ def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):
 
     assert simulation.ambient["source"] == "omni"
     assert simulation.cmes == []
+    assert simulation.model["grab_donki_at_run_start"] is False
+
+
+def test_preview_donki_option_sets_codegen_flag_without_fetching(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    def fail_fetch(*_args, **_kwargs):
+        raise AssertionError("DONKI should not be fetched while generating preview code")
+
+    monkeypatch.setattr(web_app, "_fetch_donki_cmes", fail_fetch)
+    app = create_app({"TESTING": True})
+
+    with app.test_request_context(
+        "/",
+        method="POST",
+        data={
+            "action": "preview",
+            "ambient_source": "wsa_iswa",
+            "grab_donki_at_run_start": "on",
+            "solver": "huxt",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "speed_kms": "400",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "315",
+            "lon_max": "45",
+            "frame": "sidereal",
+        },
+    ):
+        simulation = web_app._request_from_form()
+
+    assert simulation.model["grab_donki_at_run_start"] is True
+    assert simulation.cmes == []
 
 
 def test_model_coordinate_endpoint_returns_synchronised_values():
