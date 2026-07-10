@@ -820,7 +820,10 @@
       <div class="p-5 sm:p-7">
         <div class="mb-4 flex items-center justify-between gap-3">
           <h2 class="m-0">Generated Code</h2>
-          <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Close</button>
+          <div class="button-group">
+            <button type="button" class="secondary-button" id="copy-generated-code">Copy Code</button>
+            <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Close</button>
+          </div>
         </div>
         <pre>{{ code }}</pre>
       </div>
@@ -834,6 +837,7 @@
     }
     const generatedCodeDialog = document.getElementById("generated-code-dialog");
     const generatedCodeButton = document.getElementById("show-generated-code");
+    const copyGeneratedCodeButton = document.getElementById("copy-generated-code");
     const generatedCodePre = generatedCodeDialog ? generatedCodeDialog.querySelector("pre") : null;
     const baseGeneratedCodeText = generatedCodePre ? generatedCodePre.textContent : "";
     const plotCodeHistory = [];
@@ -859,6 +863,43 @@
     function recordPlotCode(codeText) {
       plotCodeHistory.push(codeText.trim());
       refreshGeneratedCodeDialog();
+    }
+
+    async function copyGeneratedCode() {
+      if (!generatedCodePre || !copyGeneratedCodeButton) return;
+      refreshGeneratedCodeDialog();
+      const codeText = generatedCodePre.textContent;
+      copyGeneratedCodeButton.disabled = true;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(codeText);
+        } else {
+          const textArea = document.createElement("textarea");
+          textArea.value = codeText;
+          textArea.setAttribute("readonly", "");
+          textArea.style.position = "fixed";
+          textArea.style.left = "-9999px";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          textArea.remove();
+        }
+        copyGeneratedCodeButton.textContent = "Copied";
+        copyGeneratedCodeButton.classList.add("success-button");
+      } catch (_) {
+        copyGeneratedCodeButton.textContent = "Copy Failed";
+        copyGeneratedCodeButton.classList.add("busy-button");
+      } finally {
+        window.setTimeout(() => {
+          copyGeneratedCodeButton.disabled = false;
+          copyGeneratedCodeButton.classList.remove("success-button", "busy-button");
+          copyGeneratedCodeButton.textContent = "Copy Code";
+        }, 1600);
+      }
+    }
+
+    if (copyGeneratedCodeButton) {
+      copyGeneratedCodeButton.addEventListener("click", copyGeneratedCode);
     }
 
     function buildPlotCode(kind) {

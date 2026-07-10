@@ -209,6 +209,16 @@ def test_template_hides_post_run_tabs_when_run_becomes_stale():
     assert "hidePostRunTabs();" in template
 
 
+def test_generated_code_dialog_has_copy_button():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'id="copy-generated-code"' in template
+    assert "async function copyGeneratedCode()" in template
+    assert "navigator.clipboard.writeText(codeText)" in template
+    assert "document.execCommand(\"copy\")" in template
+    assert 'copyGeneratedCodeButton.addEventListener("click", copyGeneratedCode)' in template
+
+
 def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
     import surfs_up.web.app as web_app
 
