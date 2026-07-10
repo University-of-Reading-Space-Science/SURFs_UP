@@ -733,6 +733,7 @@ def _request_from_form() -> SimulationRequest:
         raise ValueError("CME JSON must contain a list of CME objects.")
     if (
         request.form.get("action") == "run"
+        and source != "omni"
         and "grab_donki_at_run_start" in request.form
         and abs(_float("rmin", 21.5) - 21.5) <= 1.0e-9
     ):

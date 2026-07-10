@@ -87,9 +87,9 @@
       .workflow-status { @apply min-w-40 flex-1 px-3 text-center text-sm font-medium text-slate-600; }
       .card { @apply mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7; }
       .error { @apply mt-5 rounded-xl border border-red-200 bg-red-50 p-4 font-medium text-red-700; }
-      .tab-button { @apply rounded-none border-b-3 border-transparent bg-transparent px-4 py-3 text-slate-500
-                           shadow-none hover:bg-slate-50 hover:text-slate-900 focus:ring-0; }
-      .tab-button.active { @apply border-surf-500 text-surf-600; }
+      .tab-button { @apply rounded-lg border border-transparent bg-slate-50 px-6 py-4 text-base font-semibold text-slate-600
+                           shadow-sm hover:border-cyan-200 hover:bg-white hover:text-slate-950 focus:ring-3 focus:ring-cyan-100; }
+      .tab-button.active { @apply border-surf-500 bg-white text-surf-600 shadow-md; }
       .tab-button:disabled { @apply cursor-not-allowed text-slate-300 hover:bg-transparent; }
       .tab-panel { @apply hidden; }
       .tab-panel.active { @apply block; }
@@ -181,7 +181,7 @@
       </button>
     </div>
   </section>
-  <nav class="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"
+  <nav class="mb-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
        aria-label="SURF workflow">
     <div class="flex min-w-max items-stretch justify-between gap-2">
       <div class="flex min-w-max" role="tablist">
@@ -199,7 +199,6 @@
 
   <form class="card mt-0" id="simulation-form" method="post" enctype="multipart/form-data" novalidate>
     <section class="tab-panel form-grid active" data-panel="model" role="tabpanel">
-    <h2 class="mt-0">Model parameters</h2>
     <fieldset class="group-box">
       <legend class="group-title px-1">Model Parameters</legend>
       <div class="grid gap-4">
@@ -278,7 +277,6 @@
     </section>
 
     <section class="tab-panel form-grid" data-panel="ambient" role="tabpanel">
-    <h2 class="wide">Ambient solar wind</h2>
     <input type="hidden" name="ambient_source" id="ambient-source" value="wsa_iswa">
     <div class="inner-tabs wide" id="ambient-source-tabs">
       {% for value, label in [
@@ -333,7 +331,7 @@
           <label class="source-choice mb-4">
             <input type="radio" name="ambient_source_choice" value="omni">
             <span class="grid gap-1">
-              <span class="font-semibold text-slate-900">Outward propagation</span>
+              <span class="font-semibold text-slate-900">Set inner boundary to 215 Rs</span>
               <span class="text-sm font-normal text-slate-600">Start from the 215 Rs OMNI boundary and run outwards.</span>
             </span>
           </label>
@@ -407,7 +405,6 @@
     </section>
 
     <section class="tab-panel form-grid" data-panel="cme" role="tabpanel">
-    <h2 class="wide">CMEs</h2>
     <fieldset class="group-box">
       <legend class="group-title px-1">Cone CME lists (typically for model inner boundary at 0.1 AU)</legend>
       <div class="grid gap-4">
@@ -485,9 +482,7 @@
     </dialog>
   {% endif %}
     <section class="card tab-panel" data-panel="plots" role="tabpanel">
-      <h2 class="mt-0">Plots</h2>
       {% if run_id %}
-      <p class="mb-5 text-sm text-slate-500">These products remain available while this server process retains the run.</p>
       <form class="form-grid wide" id="plots-form" onsubmit="return false">
         <div class="inner-tabs" data-inner-tabs="plot-products">
           <button type="button" class="inner-tab-button active" data-inner-tab="map-product">2D Map</button>
@@ -563,7 +558,6 @@
     </section>
 
     <section class="card tab-panel" data-panel="movies" role="tabpanel">
-      <h2 class="mt-0">Movies</h2>
       {% if run_id %}
       <form class="form-grid wide" id="movies-form" onsubmit="return false">
         <div class="inner-tabs" data-inner-tabs="movie-products">
@@ -1001,6 +995,7 @@
       document.querySelectorAll('[name="ambient_source_choice"]').forEach(choice => {
         choice.checked = choice.value === source;
       });
+      disableDonkiForOutwardOmni(source);
     }
 
     function showAmbientPanel(source) {
@@ -1265,6 +1260,11 @@
       '[name="grab_donki_at_run_start"]'
     );
     const modelInnerBoundary = document.getElementById("model-rmin");
+    function disableDonkiForOutwardOmni(source = ambientSourceInput.value) {
+      if (source === "omni") {
+        grabDonkiAtRunStart.checked = false;
+      }
+    }
     function disableDonkiForNonStandardInnerBoundary() {
       if (Math.abs(Number(modelInnerBoundary.value) - 21.5) > 1e-9) {
         grabDonkiAtRunStart.checked = false;

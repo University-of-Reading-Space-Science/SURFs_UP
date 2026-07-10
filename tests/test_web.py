@@ -3,6 +3,7 @@
 import datetime
 import html
 from io import BytesIO
+from pathlib import Path
 
 import astropy.units as u
 import numpy as np
@@ -170,6 +171,66 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'name="mas_use_map_time"' in response.data
     assert b'name="wsa_use_map_time"' in response.data
     assert b'name="cortom_use_map_time"' in response.data
+
+
+def test_template_turns_off_donki_for_omni_outward_selection():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert "disableDonkiForOutwardOmni" in template
+    assert 'source === "omni"' in template
+    assert "grabDonkiAtRunStart.checked = false" in template
+
+
+def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert ">Set inner boundary to 215 Rs</span>" in template
+    assert ">Outward propagation</span>" not in template
+    assert ">Model parameters</h2>" not in template
+    assert ">Ambient solar wind</h2>" not in template
+    assert '<h2 class="wide">CMEs</h2>' not in template
+    assert '<h2 class="mt-0">Plots</h2>' not in template
+    assert "These products remain available while this server process retains the run." not in template
+    assert '<h2 class="mt-0">Movies</h2>' not in template
+    assert "text-base font-semibold" in template
+    assert "hover:border-cyan-200" in template
+
+
+def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    def fail_fetch(*_args, **_kwargs):
+        raise AssertionError("DONKI should not be fetched for OMNI outward runs")
+
+    monkeypatch.setattr(web_app, "_fetch_donki_cmes", fail_fetch)
+    app = create_app({"TESTING": True})
+
+    with app.test_request_context(
+        "/",
+        method="POST",
+        data={
+            "action": "run",
+            "ambient_source": "omni",
+            "use_215_inner_boundary": "on",
+            "grab_donki_at_run_start": "on",
+            "solver": "huxt",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "speed_kms": "400",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "315",
+            "lon_max": "45",
+            "frame": "sidereal",
+        },
+    ):
+        simulation = web_app._request_from_form()
+
+    assert simulation.ambient["source"] == "omni"
+    assert simulation.cmes == []
 
 
 def test_model_coordinate_endpoint_returns_synchronised_values():
