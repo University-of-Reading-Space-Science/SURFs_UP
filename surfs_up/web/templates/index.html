@@ -1433,9 +1433,21 @@
 
     const runForm = document.querySelector('form[method="post"]');
     let runIsCurrent = {{ "true" if run_id else "false" }};
+    function hidePostRunTabs() {
+      ["plots", "movies"].forEach(name => {
+        document.querySelector(`[data-tab="${name}"]`)?.classList.add("hidden");
+        document.querySelector(`[data-panel="${name}"]`)?.classList.remove("active");
+      });
+      document.getElementById("post-run-tab-spacer")?.classList.add("hidden");
+      const activeTab = document.querySelector("[data-tab].active")?.dataset.tab;
+      if (["plots", "movies"].includes(activeTab)) {
+        activateTab("model");
+      }
+    }
     function invalidateCompletedRun() {
       if (!runIsCurrent) return;
       runIsCurrent = false;
+      hidePostRunTabs();
       const runButton = document.getElementById("run-surf-button");
       runButton.classList.remove("success-button", "busy-button");
       runButton.textContent = "Run SURF";
@@ -1539,6 +1551,18 @@
     const retainedConfiguration = sessionStorage.getItem("surfs-up-current-configuration");
     if (retainedConfiguration) {
       try { applyConfiguration(JSON.parse(retainedConfiguration), false); } catch (_) {}
+    }
+    const submittedCmes = {{ submitted_cmes|tojson }};
+    if (submittedCmes) {
+      cmes.splice(0, cmes.length, ...submittedCmes);
+      if (cmes.length) grabDonkiAtRunStart.checked = false;
+      selectedCmeIndex = -1;
+      renderCmes();
+      if (submittedCmes.some(cme => cme.source === "donki")) {
+        document.getElementById("donki-status").textContent =
+          `Loaded ${submittedCmes.filter(cme => cme.source === "donki").length} DONKI cone CME(s) at run start.`;
+      }
+      sessionStorage.setItem("surfs-up-current-configuration", JSON.stringify(captureConfiguration()));
     }
     document.getElementById("save-configuration").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(captureConfiguration(), null, 2)], {type: "application/json"});

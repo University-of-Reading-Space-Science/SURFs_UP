@@ -4,6 +4,7 @@ import datetime
 import html
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import astropy.units as u
 import numpy as np
@@ -194,6 +195,96 @@ def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
     assert '<h2 class="mt-0">Movies</h2>' not in template
     assert "text-base font-semibold" in template
     assert "hover:border-cyan-200" in template
+
+
+def test_template_hides_post_run_tabs_when_run_becomes_stale():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert "function hidePostRunTabs()" in template
+    assert '["plots", "movies"].forEach' in template
+    assert 'document.querySelector(`[data-tab="${name}"]`)?.classList.add("hidden")' in template
+    assert 'document.getElementById("post-run-tab-spacer")?.classList.add("hidden")' in template
+    assert 'if (["plots", "movies"].includes(activeTab))' in template
+    assert 'activateTab("model")' in template
+    assert "hidePostRunTabs();" in template
+
+
+def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    donki_cme = {
+        "longitude": 10.0,
+        "latitude": 2.0,
+        "speed": 900.0,
+        "width": 45.0,
+        "t_launch_day": 0.25,
+        "t_launch_datetime": "2026-07-03 18:00:00",
+        "thickness_rs": 0,
+        "initial_height_rs": 21.5,
+        "cme_expansion": False,
+        "cme_fixed_duration": True,
+        "fixed_duration_hr": 12,
+        "profile_type": "square",
+        "plasma_mode": "Fraction of ambient",
+        "density_fraction": 1,
+        "temperature_fraction": 1,
+        "cme_density_pcc": 100,
+        "cme_temperature_k": 100000,
+        "source": "donki",
+        "donki_id": "2026-test-donki",
+    }
+    monkeypatch.setattr(web_app, "_fetch_donki_cmes", lambda *_args: [donki_cme])
+    monkeypatch.setattr(web_app, "build_generated_code", lambda _simulation: "# code")
+    monkeypatch.setattr(
+        web_app,
+        "run_generated_code",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            success=True,
+            model=object(),
+            message="Run completed",
+            output="",
+        ),
+    )
+    monkeypatch.setattr(web_app, "_retain_model", lambda *_args: "run123")
+    monkeypatch.setattr(
+        web_app,
+        "_model_defaults",
+        lambda: {
+            "default_start": "2026-07-03T12:00:00",
+            "default_iswa_map_datetime": "2026-07-03T12:00",
+            "default_cr_num": 2300,
+            "default_cr_lon": 0.0,
+            "default_latitude": 0.0,
+        },
+    )
+
+    response = create_app({"TESTING": True}).test_client().post(
+        "/",
+        data={
+            "action": "run",
+            "ambient_source": "wsa_iswa",
+            "grab_donki_at_run_start": "on",
+            "solver": "huxt",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "speed_kms": "400",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "315",
+            "lon_max": "45",
+            "frame": "sidereal",
+            "cmes_json": '[{"source":"manual","longitude":0,"latitude":0,"speed":800,'
+            '"width":60,"t_launch_day":0.5}]',
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"const submittedCmes =" in response.data
+    assert b"2026-test-donki" in response.data
+    assert b"Loaded ${submittedCmes.filter" in response.data
 
 
 def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):

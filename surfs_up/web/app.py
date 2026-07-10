@@ -7,6 +7,7 @@ import csv
 import inspect
 import io
 import json
+import math
 import os
 import pickle
 import tempfile
@@ -123,6 +124,19 @@ def _prune_run_cache() -> None:
     for path in cached_runs[:_MAX_RETAINED_RUNS]:
         if path.stat().st_mtime < cutoff:
             path.unlink(missing_ok=True)
+
+
+def _json_safe(value):
+    """Return a JSON-safe copy of nested run metadata."""
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 
 def _set_run_progress(progress_id: str, message: str) -> None:
@@ -866,6 +880,7 @@ def create_app(config: dict | None = None) -> Flask:
             "result": None,
             "run_id": None,
             "show_code_dialog": False,
+            "submitted_cmes": None,
         }
         if request.method == "POST":
             try:
@@ -874,6 +889,7 @@ def create_app(config: dict | None = None) -> Flask:
                 action = request.form.get("action")
                 context["show_code_dialog"] = action == "preview"
                 if action == "run":
+                    context["submitted_cmes"] = _json_safe(simulation.cmes)
                     progress_id = request.form.get("progress_id", "")
                     _set_run_progress(progress_id, "Grabbing and processing input data")
                     context["result"] = run_generated_code(
