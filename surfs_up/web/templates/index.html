@@ -261,6 +261,10 @@
           <span class="pb-2 text-sm font-medium text-slate-600">vmax (km/s)</span>
           <label><span class="sr-only">Maximum grid speed in kilometres per second</span><input name="vmax_kms" type="number" step="100" value="3000"></label>
         </div>
+        <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr]" id="model-gamma-row">
+          <span class="pb-2 text-sm font-medium text-slate-600">Gamma</span>
+          <label><span class="sr-only">Adiabatic index gamma</span><input name="gamma" id="model-gamma" type="number" step="0.01" value="1.5"></label>
+        </div>
         <div class="grid items-end gap-3 lg:grid-cols-[minmax(12rem,auto)_auto_1fr]">
           <label class="pb-2"><span><input name="streak_lines_enabled" type="checkbox"> Enable streak lines</span></label>
           <span class="pb-2 text-sm font-medium text-slate-600">Spacing (deg)</span>
@@ -1950,6 +1954,8 @@
 
     const oneDimensionalToggle = document.querySelector('[name="is_1d"]');
     const solverSelect = document.querySelector('[name="solver"]');
+    const modelGammaRow = document.getElementById("model-gamma-row");
+    const modelGammaInput = document.getElementById("model-gamma");
     const frameSelect = document.querySelector('[name="frame"]');
     const streakToggle = document.querySelector('[name="streak_lines_enabled"]');
     const streakSpacing = document.querySelector('[name="streak_spacing_deg"]');
@@ -1962,6 +1968,11 @@
       document.querySelector('[name="lon_min"]').disabled = oneDimensionalToggle.checked;
       document.querySelector('[name="lon_max"]').disabled = oneDimensionalToggle.checked;
       frameSelect.value = oneDimensionalToggle.checked ? "synodic" : "sidereal";
+      if (modelGammaRow && modelGammaInput) {
+        const gammaEnabled = solverSelect.value !== "huxt";
+        modelGammaInput.disabled = !gammaEnabled;
+        modelGammaRow.classList.toggle("hidden", !gammaEnabled);
+      }
       streakSpacing.disabled = !streakToggle.checked;
       const fieldSelect = document.getElementById("movie-ts-field");
       if (fieldSelect) {

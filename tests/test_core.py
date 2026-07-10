@@ -56,6 +56,18 @@ def test_generated_code_can_enable_cme_front_tracking():
     assert "track_cmes=True" in code
 
 
+def test_uniform_generator_sets_gamma_for_non_huxt_solver():
+    simulation = request()
+    simulation.model["solver"] = "hydro"
+    simulation.model["gamma"] = 1.42
+
+    code = build_uniform_boundary_code(simulation)
+
+    compile(code, "<generated>", "exec")
+    assert "solver='hydro'" in code
+    assert "model.set_gamma(1.42)" in code
+
+
 def test_runner_reports_immediately_before_model_solve():
     code = """
 print("prepared")
@@ -259,6 +271,7 @@ def test_generated_code_supports_wsa_iswa():
 def test_generated_code_uses_parker_wsa_reduction_for_non_huxt():
     simulation = request()
     simulation.model["solver"] = "hydro"
+    simulation.model["gamma"] = 1.4
     simulation.ambient = {
         "source": "wsa_iswa",
         "decelerate_to_inner_boundary": True,
@@ -270,8 +283,11 @@ def test_generated_code_uses_parker_wsa_reduction_for_non_huxt():
 
     compile(code, "<generated>", "exec")
     assert "if solver == 'huxt':" in code
+    assert "gamma = 1.4" in code
     assert "sin.map_v_inwards_parker" in code
-    assert "sin.map_v_inwards(" in code
+    assert "v_boundary, 215*u.solRad, wsa_lon, rmin, gamma=gamma" in code
+    assert "acc_profile=acc_profile, gamma=gamma" in code
+    assert "model.set_gamma(gamma)" in code
     assert "v_boundary = wsa_reduction[0]" in code
 
 

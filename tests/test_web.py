@@ -160,6 +160,7 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b"Include B polarity" in response.data
     assert b"Include bpol in run" not in response.data
     assert b'name="simtime_days" type="number" step="0.1" value="10"' in response.data
+    assert b'name="gamma" id="model-gamma" type="number" step="0.01" value="1.5"' in response.data
     assert b'id="edit-selected-cme"' in response.data
     assert b'name="track_cmes" type="checkbox"' in response.data
     assert b'name="track_cmes" type="checkbox" checked' not in response.data
@@ -172,6 +173,8 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'name="mas_use_map_time"' in response.data
     assert b'name="wsa_use_map_time"' in response.data
     assert b'name="cortom_use_map_time"' in response.data
+    assert b'id="model-gamma-row"' in response.data
+    assert b'const modelGammaInput = document.getElementById("model-gamma")' in response.data
 
 
 def test_template_turns_off_donki_for_omni_outward_selection():
@@ -254,6 +257,34 @@ def test_generated_code_endpoint_reflects_current_form_state():
     assert second.status_code == 200
     assert "r_max=240.0 * u.solRad" in first.get_json()["code"]
     assert "r_max=300.0 * u.solRad" in second.get_json()["code"]
+
+
+def test_generated_code_endpoint_includes_gamma_for_non_huxt_solver():
+    response = create_app({"TESTING": True}).test_client().post(
+        "/generated-code",
+        data={
+            "action": "preview",
+            "ambient_source": "user_specified",
+            "solver": "hydro",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "speed_kms": "400",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "315",
+            "lon_max": "45",
+            "frame": "sidereal",
+            "gamma": "1.42",
+        },
+    )
+
+    assert response.status_code == 200
+    code = response.get_json()["code"]
+    assert "solver='hydro'" in code
+    assert "model.set_gamma(1.42)" in code
 
 
 def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):

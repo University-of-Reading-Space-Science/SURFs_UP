@@ -16,6 +16,7 @@ def build_uniform_boundary_code(request: SimulationRequest) -> str:
     profile = ambient.get("speed_profile_kms", [400.0] * 128)
     if not profile:
         raise ValueError("The speed profile cannot be empty.")
+    solver = str(state["solver"]).lower()
 
     lines = [
         "import datetime",
@@ -53,11 +54,18 @@ def build_uniform_boundary_code(request: SimulationRequest) -> str:
             f"    latitude={float(state['latitude'])} * u.deg,",
             f"    frame={state.get('frame', 'sidereal')!r},",
             f"    simtime={float(state['simtime_days'])} * u.day,",
-        f"    solver={str(state['solver']).lower()!r},",
+        f"    solver={solver!r},",
         "    dt_scale=4,",
         f"    track_cmes={bool(state.get('track_cmes', False))},",
         ")",
-            "",
+        ]
+    )
+    if solver != "huxt":
+        lines.extend([f"model.set_gamma({float(state.get('gamma', 1.5))})", ""])
+    else:
+        lines.append("")
+    lines.extend(
+        [
             "# Solve the ambient model without any CMEs.",
             "model.solve([])",
             "",
@@ -75,7 +83,7 @@ def _wsa_speed_reduction_lines() -> list[str]:
         "    )",
         "else:",
         "    wsa_reduction = sin.map_v_inwards_parker(",
-        "        v_boundary, 215*u.solRad, wsa_lon, rmin",
+        "        v_boundary, 215*u.solRad, wsa_lon, rmin, gamma=gamma",
         "    )",
         "v_boundary = wsa_reduction[0]",
     ]
@@ -89,6 +97,8 @@ def build_generated_code(request: SimulationRequest) -> str:
     """
     request.validate()
     state, ambient, cmes = request.model, request.ambient, request.cmes
+    solver = str(state["solver"]).lower()
+    gamma = float(state.get("gamma", 1.5))
     if (
         ambient["source"] == "user_specified"
         and not cmes
@@ -107,7 +117,7 @@ def build_generated_code(request: SimulationRequest) -> str:
         "import surf.surf_inputs as sin",
         "",
         "# Define settings shared by the boundary preparation and model setup.",
-        f"solver = {str(state['solver']).lower()!r}",
+        f"solver = {solver!r}",
         "acc_profile = 'huxt' if solver == 'huxt' else 'parker'",
         f"rmin = {float(state['rmin'])} * u.solRad",
         f"rmax = {float(state['rmax'])} * u.solRad",
@@ -117,6 +127,8 @@ def build_generated_code(request: SimulationRequest) -> str:
         "",
         "# Prepare the selected ambient solar-wind boundary.",
     ]
+    if solver != "huxt":
+        lines.insert(-2, f"gamma = {gamma}")
     source = ambient["source"]
     include_bpol = bool(state.get("include_bpol"))
     if source == "user_specified":
@@ -141,6 +153,7 @@ def build_generated_code(request: SimulationRequest) -> str:
             )
         if ambient.get("decelerate_to_inner_boundary", True):
             call = "sin.map_v_boundary_inwards(v_boundary, 30*u.solRad, rmin, acc_profile=acc_profile"
+            call += ", gamma=gamma" if solver != "huxt" else ""
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lines.append(("v_boundary, b_boundary = " if include_bpol else "v_boundary = ") + call)
     elif source == "wsa":
@@ -155,6 +168,7 @@ def build_generated_code(request: SimulationRequest) -> str:
             lines.extend(_wsa_speed_reduction_lines())
         if ambient.get("decelerate_to_inner_boundary", True):
             call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin, acc_profile=acc_profile"
+            call += ", gamma=gamma" if solver != "huxt" else ""
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lhs = "v_boundary, b_boundary = " if include_bpol else "v_boundary = "
             lines.append(lhs + call)
@@ -171,6 +185,7 @@ def build_generated_code(request: SimulationRequest) -> str:
             lines.extend(_wsa_speed_reduction_lines())
         if ambient.get("decelerate_to_inner_boundary", True):
             call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin, acc_profile=acc_profile"
+            call += ", gamma=gamma" if solver != "huxt" else ""
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lhs = "v_boundary, b_boundary = " if include_bpol else "v_boundary = "
             lines.append(lhs + call)
@@ -179,9 +194,10 @@ def build_generated_code(request: SimulationRequest) -> str:
             f"v_boundary = sin.get_CorTom_long_profile(r{ambient['filepath']!r}, latitude)"
         )
         if ambient.get("decelerate_to_inner_boundary", True):
+            gamma_arg = ", gamma=gamma" if solver != "huxt" else ""
             lines.append(
                 "v_boundary = sin.map_v_boundary_inwards("
-                "v_boundary, 8.0*u.solRad, rmin, acc_profile=acc_profile)"
+                f"v_boundary, 8.0*u.solRad, rmin, acc_profile=acc_profile{gamma_arg})"
             )
     elif source in {"insitu_backmapped", "omni"}:
         lines.insert(6, "import surf.surf_insitu as sinsit")
@@ -278,6 +294,9 @@ def build_generated_code(request: SimulationRequest) -> str:
                 ]
             )
         lines.append("model = s.SURF(" + ", ".join(args) + ")")
+
+    if solver != "huxt":
+        lines.extend(["", "model.set_gamma(gamma)"])
 
     lines.extend(
         [

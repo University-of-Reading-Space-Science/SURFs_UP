@@ -811,6 +811,7 @@ def _request_from_form() -> SimulationRequest:
             "dr_rs": _float("dr_rs", 1.5),
             "nlon": int(_float("nlon", 128)),
             "vmax_kms": _float("vmax_kms", 3000.0),
+            "gamma": _float("gamma", 1.5),
             "start_datetime": start.replace("T", " "),
             "cr_num": int(_float("cr_num", 2300)),
             "cr_lon_init_deg": _float("cr_lon_init_deg", 0.0),
