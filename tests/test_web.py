@@ -132,6 +132,7 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'data-tab="model"' in response.data
     assert b'data-tab="ambient"' in response.data
     assert b'data-tab="cme"' in response.data
+    assert b'data-tab="outputs"' in response.data
     assert b'id="load-configuration"' in response.data
     assert b'id="save-configuration"' in response.data
     assert b"Show Terminal Output" in response.data
@@ -141,6 +142,7 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked' in response.data
     assert b"busy-button" in response.data
     assert b"Grabbing and processing input data" in response.data
+    assert b"Preparing run..." in response.data
     assert b"/run-progress/" in response.data
     assert b"Configuration changed. Run SURF again." in response.data
     assert b"Model Parameters" in response.data
@@ -210,10 +212,49 @@ def test_template_hides_post_run_tabs_when_run_becomes_stale():
     assert 'if (["plots", "movies"].includes(activeTab))' in template
     assert 'activateTab("model")' in template
     assert "hidePostRunTabs();" in template
+    assert 'event.submitter.textContent = "Preparing run..."' in template
+    assert 'event.submitter.textContent = "Running SURF..."' in template
+    assert 'if (progress.message === "Running SURF")' in template
+    assert 'window.setTimeout(() => {\n          if (latestRunProgress === "Grabbing and processing input data")' not in template
     assert "function resetGeneratedCodeForCurrentState()" in template
     assert "plotCodeHistory.length = 0;" in template
     assert 'generatedCodePre.textContent = "";' in template
     assert "resetGeneratedCodeForCurrentState();" in template
+
+
+def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'data-tab="outputs"' in template
+    assert 'data-panel="outputs"' in template
+    assert 'class="tab-button" type="button" role="tab" data-tab="outputs"' in template
+    assert 'document.querySelector(`[data-tab="${name}"]`)?.classList.add("hidden")' in template
+    assert '["plots", "movies"].forEach' in template
+    assert '"outputs"' not in template[
+        template.index("function hidePostRunTabs()"):template.index("function invalidateCompletedRun()")
+    ]
+    assert 'id="ambient-plot-output"' in template[
+        template.index('data-panel="outputs"'):]
+    assert 'id="plot-output"' in template[
+        template.index('data-panel="outputs"'):]
+    assert 'id="movie-output-panel"' in template[
+        template.index('data-panel="outputs"'):]
+    assert "has-new-output" in template
+    assert "function markOutputsTabHasNewContent()" in template
+    assert 'if (name === "outputs") button.classList.remove("has-new-output")' in template
+    assert "markOutputsTabHasNewContent();" in template
+    assert 'const savedOutputsKey = "surfs-up-output-history"' in template
+    assert "function blobToDataUrl(blob)" in template
+    assert "function savePlotOutput(entry)" in template
+    assert "function restoreSavedOutputs()" in template
+    assert "restoreSavedOutputs();" in template
+    assert "savePlotOutput(entry);" in template
+    assert "downloadLink.download = entry.filename || \"SURF_plot.png\";" in template
+    assert "downloadLink.textContent = \"Download\";" in template
+    assert "filename: `SURF_${kind}_plot_${timestamp.toISOString().replace(/[:.]/g, \"-\")}.png`" in template
+    assert "URL.createObjectURL(blob)" not in template[
+        template.index("function showPlot("):template.index("function downloadTimeseries(")
+    ]
 
 
 def test_generated_code_dialog_has_copy_button():
