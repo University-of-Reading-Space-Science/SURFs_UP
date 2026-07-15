@@ -255,7 +255,7 @@ def test_generated_code_includes_preloaded_donki_list_when_runtime_fetch_is_off(
     assert "s.ConeCME" in code
 
 
-def test_generated_code_passes_absolute_cme_density_as_value():
+def test_generated_code_passes_absolute_cme_density_as_quantity():
     simulation = request()
     simulation.model["solver"] = "hydro"
     simulation.cmes.append(
@@ -274,8 +274,8 @@ def test_generated_code_passes_absolute_cme_density_as_value():
     code = build_generated_code(simulation)
 
     compile(code, "<generated>", "exec")
-    assert "cme_density=(100.0/u.cm**3*const.m_p).to_value(u.kg/u.m**3)" in code
-    assert "cme_density=(100.0/u.cm**3*const.m_p).to(u.kg/u.m**3)" not in code
+    assert "cme_density=(100.0/u.cm**3*const.m_p).to(u.kg/u.m**3)" in code
+    assert "cme_density=(100.0/u.cm**3*const.m_p).to_value(u.kg/u.m**3)" not in code
 
 
 def test_generated_code_supports_wsa_iswa():
@@ -340,3 +340,23 @@ def test_generated_code_passes_longitude_range_to_omni_backmapped():
     assert "simtime=simtime, buffertime=5*u.day" in code
     assert "lon_start=120.0*u.deg" in code
     assert "lon_stop=240.0*u.deg" in code
+
+
+def test_generated_omni_functions_follow_include_bpol_selection():
+    simulation = request()
+    simulation.model["include_bpol"] = True
+    simulation.ambient = {
+        "source": "insitu_backmapped",
+        "mode": "reconstruction",
+    }
+
+    code = build_generated_code(simulation)
+    assert "omniSURF_reconstruction" in code
+    assert "include_b_boundary=True" in code
+
+    simulation.model["include_bpol"] = False
+    simulation.ambient = {"source": "omni", "use_215_inner_boundary": True}
+
+    code = build_generated_code(simulation)
+    assert "omniSURF_1au_out" in code
+    assert "include_b_boundary=False" in code

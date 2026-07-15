@@ -232,7 +232,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"nlon={int(state.get('nlon', 128))}, "
                     f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s), "
                     f"dt_scale=4, solver=solver, run_2d={not state.get('is_1d', False)}, "
-                    f"track_cmes={bool(state.get('track_cmes', False))}"
+                    f"track_cmes={bool(state.get('track_cmes', False))}, "
+                    f"include_b_boundary={include_bpol}"
                     f"{longitude_args})"
                 ]
             )
@@ -247,9 +248,30 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f", lon_stop={float(state.get('lon_max', 45))}*u.deg"
                 )
             )
-            lines.extend(
-                [
-                    "end_time = start_time + datetime.timedelta(days=simtime.to_value(u.day))",
+            lines.append(
+                "end_time = start_time + datetime.timedelta(days=simtime.to_value(u.day))"
+            )
+            if ambient.get("use_215_inner_boundary", True):
+                longitude_args = ""
+                if not state.get("is_1d", False):
+                    longitude_args = (
+                        f", lon_start={float(state.get('lon_min', 315))}*u.deg"
+                        f", lon_stop={float(state.get('lon_max', 45))}*u.deg"
+                    )
+                lines.append(
+                    "model = sinsit.omniSURF_1au_out("
+                    "start_time, end_time, rmax=rmax, "
+                    f"dr={float(state.get('dr_rs', 1.5))}*u.solRad, "
+                    f"nlon={int(state.get('nlon', 128))}, "
+                    f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s), "
+                    f"dt_scale=4, solver=solver, run_2d={not state.get('is_1d', False)}, "
+                    f"track_cmes={bool(state.get('track_cmes', False))}, "
+                    f"include_b_boundary={include_bpol}"
+                    f"{longitude_args})"
+                )
+            else:
+                lines.extend(
+                    [
                     "time_grid, vcarr, bcarr = sinsit.generate_vCarr_from_OMNI(start_time, end_time)",
                     "model = sin.set_time_dependent_boundary("
                     f"vcarr, time_grid, start_time, simtime, r_min={omni_rmin}, r_max=rmax, "
@@ -261,8 +283,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                     + geometry
                     + (", bgrid_Carr=bcarr" if include_bpol else "")
                     + ")",
-                ]
-            )
+                    ]
+                )
     else:
         raise ValueError(f"Unsupported ambient source: {source}")
 
@@ -327,7 +349,7 @@ def build_generated_code(request: SimulationRequest) -> str:
     for index, cme in enumerate(literal_cmes):
         plasma = (
             [
-                f"cme_density=({float(cme['cme_density_pcc'])}/u.cm**3*const.m_p).to_value(u.kg/u.m**3)",
+                f"cme_density=({float(cme['cme_density_pcc'])}/u.cm**3*const.m_p).to(u.kg/u.m**3)",
                 f"cme_temperature={float(cme['cme_temperature_k'])}*u.K",
             ]
             if cme.get("plasma_mode") == "Absolute values"
