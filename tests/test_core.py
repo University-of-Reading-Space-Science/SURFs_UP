@@ -299,6 +299,20 @@ def test_generated_code_supports_wsa_iswa():
     assert code.index("map_v_inwards") < code.index("map_v_boundary_inwards")
 
 
+def test_generated_code_uses_configured_ambient_source_radius():
+    simulation = request()
+    simulation.ambient = {
+        "source": "mas",
+        "cr_num": 2300,
+        "source_radius_rs": 35.5,
+        "decelerate_to_inner_boundary": True,
+    }
+
+    code = build_generated_code(simulation)
+
+    assert "map_v_boundary_inwards(v_boundary, 35.5*u.solRad, rmin" in code
+
+
 def test_generated_code_uses_parker_wsa_reduction_for_non_huxt():
     simulation = request()
     simulation.model["solver"] = "hydro"

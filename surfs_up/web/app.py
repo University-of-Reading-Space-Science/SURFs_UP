@@ -386,6 +386,7 @@ def _ambient_preview_figure():
 
     def plot_mas():
         cr_num = int(_float("mas_cr_num", 2000))
+        source_radius_rs = _float("mas_source_radius_rs", 30.0)
         map_to_inner = "mas_decelerate" in request.form
         speed_map, map_longitudes, map_latitudes = sin.get_MAS_vr_map(cr_num)
         v_orig = sin.get_MAS_long_profile(cr_num, latitude)
@@ -398,7 +399,7 @@ def _ambient_preview_figure():
             if map_to_inner:
                 mapped = sin.map_v_boundary_inwards(
                     v_orig,
-                    30.0 * u.solRad,
+                    source_radius_rs * u.solRad,
                     21.5 * u.solRad,
                     acc_profile=acc_profile,
                     b_orig=b_orig,
@@ -416,7 +417,7 @@ def _ambient_preview_figure():
             if map_to_inner:
                 v_mapped = sin.map_v_boundary_inwards(
                     v_orig,
-                    30.0 * u.solRad,
+                    source_radius_rs * u.solRad,
                     21.5 * u.solRad,
                     acc_profile=acc_profile,
                 )
@@ -437,7 +438,7 @@ def _ambient_preview_figure():
             f"MAS speed map | CR {cr_num}",
         )
         ax_map.set_xlabel("Carrington longitude [deg]")
-        ax_v.plot(carr_lon, v_orig.to_value(u.km / u.s), linewidth=1.5, label="Original at 30 Rs")
+        ax_v.plot(carr_lon, v_orig.to_value(u.km / u.s), linewidth=1.5, label=f"Original at {source_radius_rs:g} Rs")
         ax_v.plot(
             carr_lon,
             v_mapped.to_value(u.km / u.s),
@@ -453,7 +454,7 @@ def _ambient_preview_figure():
         ax_v.grid(True, alpha=0.3)
         ax_v.legend()
         if include_bpol:
-            ax_b.plot(carr_lon, np.asarray(b_orig), linewidth=1.5, label="Original bpol at 30 Rs")
+            ax_b.plot(carr_lon, np.asarray(b_orig), linewidth=1.5, label=f"Original bpol at {source_radius_rs:g} Rs")
             ax_b.plot(
                 carr_lon,
                 np.asarray(b_mapped),
@@ -618,7 +619,7 @@ def _ambient_preview_figure():
             "WSA boundary profiles",
             f"WSA speed map | {Path(path).name}",
             path,
-            21.5,
+            _float("wsa_source_radius_rs", 21.5),
             sin.get_WSA_long_profile,
             sin.get_WSA_br_long_profile,
             lambda selected_path: sin.get_WSA_maps(selected_path)[:3],
@@ -627,14 +628,7 @@ def _ambient_preview_figure():
         )
     if source == "wsa_iswa":
         iswa_fallback = request.form.get("start_datetime", "")
-        iswa_value = (
-            (
-                datetime.datetime.fromisoformat(iswa_fallback.replace("T", " "))
-                + datetime.timedelta(days=5)
-            ).isoformat()
-            if "iswa_use_model_start" in request.form
-            else request.form.get("iswa_map_date", "")
-        )
+        iswa_value = request.form.get("iswa_map_date", "")
         required_for = _iswa_map_datetime(
             iswa_value,
             iswa_fallback,
@@ -644,7 +638,7 @@ def _ambient_preview_figure():
             "WSA boundary profiles",
             f"WSA speed map | {Path(path).name}",
             Path(path),
-            21.5,
+            _float("iswa_source_radius_rs", 21.5),
             sin.get_WSA_long_profile,
             sin.get_WSA_br_long_profile,
             lambda selected_path: sin.get_WSA_maps(selected_path)[:3],
@@ -661,7 +655,7 @@ def _ambient_preview_figure():
             "CorTom boundary profiles",
             f"CorTom speed map | {Path(path).name}",
             path,
-            8.0,
+            _float("cortom_source_radius_rs", 8.0),
             sin.get_CorTom_long_profile,
             None,
             sin.get_CorTom_vr_map,
@@ -688,6 +682,7 @@ def _request_from_form() -> SimulationRequest:
     elif source == "mas":
         ambient.update(
             cr_num=int(_float("mas_cr_num", 2300)),
+            source_radius_rs=_float("mas_source_radius_rs", 30.0),
             decelerate_to_inner_boundary="mas_decelerate" in request.form,
         )
         if "mas_use_map_time" in request.form:
@@ -700,7 +695,7 @@ def _request_from_form() -> SimulationRequest:
                 map_time = map_time.item()
             if map_time.tzinfo is not None:
                 map_time = map_time.replace(tzinfo=None)
-            start = map_time.strftime("%Y-%m-%d %H:%M:%S")
+            start = (map_time - datetime.timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
     elif source == "wsa":
         uploaded = request.files.get("wsa_file")
         if uploaded and uploaded.filename:
@@ -709,25 +704,25 @@ def _request_from_form() -> SimulationRequest:
             path = _example_input_path("**/*.fits", "Upload a WSA input file.")
         ambient.update(
             filepath=str(path),
+            source_radius_rs=_float("wsa_source_radius_rs", 21.5),
             decelerate_to_inner_boundary="wsa_decelerate" in request.form,
             apply_wsa_speed_reduction="wsa_speed_reduction" in request.form,
         )
         if "wsa_use_map_time" in request.form:
             map_time = _ambient_file_start_time(source, path)
             if map_time is not None:
-                start = map_time.strftime("%Y-%m-%d %H:%M:%S")
+                start = (map_time - datetime.timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
     elif source == "wsa_iswa":
-        synced_iswa_datetime = (
-            datetime.datetime.fromisoformat(start.replace("T", " "))
-            + datetime.timedelta(days=5)
-        ).isoformat()
         iswa_datetime = _iswa_map_datetime(
-            synced_iswa_datetime
-            if "iswa_use_model_start" in request.form
-            else request.form.get("iswa_map_date", ""),
+            request.form.get("iswa_map_date", ""),
             start,
         )
+        if "iswa_use_model_start" in request.form:
+            start = (iswa_datetime - datetime.timedelta(days=5)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         ambient.update(
+            source_radius_rs=_float("iswa_source_radius_rs", 21.5),
             decelerate_to_inner_boundary="iswa_decelerate" in request.form,
             apply_wsa_speed_reduction="iswa_speed_reduction" in request.form,
             iswa_map_datetime=iswa_datetime.isoformat(),
@@ -740,12 +735,13 @@ def _request_from_form() -> SimulationRequest:
             path = _example_input_path("**/*.dat", "Upload a CORTOM input file.")
         ambient.update(
             filepath=str(path),
+            source_radius_rs=_float("cortom_source_radius_rs", 8.0),
             decelerate_to_inner_boundary="cortom_decelerate" in request.form,
         )
         if "cortom_use_map_time" in request.form:
             map_time = _ambient_file_start_time(source, path)
             if map_time is not None:
-                start = map_time.strftime("%Y-%m-%d %H:%M:%S")
+                start = (map_time - datetime.timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
     elif source == "insitu_backmapped":
         ambient["mode"] = request.form.get("insitu_mode", "forecast")
         ambient["forecast_datetime"] = request.form.get("omni_forecast_datetime", "")
@@ -808,8 +804,8 @@ def _request_from_form() -> SimulationRequest:
             "solver": request.form.get("solver", "huxt"),
             "rmin": _float("rmin", 21.5),
             "rmax": _float("rmax", 240.0),
-            "lon_min": _float("lon_min", 315.0),
-            "lon_max": _float("lon_max", 45.0),
+            "lon_min": _float("lon_min", 0.0),
+            "lon_max": _float("lon_max", 360.0),
             "latitude": _float("latitude", 0.0),
             "is_1d": "is_1d" in request.form,
             "frame": request.form.get("frame", "sidereal"),

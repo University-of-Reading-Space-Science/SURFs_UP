@@ -237,12 +237,12 @@
         <label><span class="sr-only">Coordinate frame</span><select name="frame"><option value="sidereal">Sidereal (recommended for 2D runs)</option><option value="synodic">Synodic (recommended for 1D runs)</option></select></label>
       </div>
       <div class="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(16rem,auto)_1fr]">
-        <label class="pb-2"><span><input name="is_1d" id="model-is-1d" type="checkbox"> Run as 1D (single longitude)</span></label>
+        <label class="pb-2"><span><input name="is_1d" id="model-is-1d" type="checkbox" checked> Run as 1D (single longitude)</span></label>
         <div id="model-longitude-row" class="grid items-end gap-3 lg:grid-cols-[auto_1fr_auto_1fr]">
           <span class="pb-2 text-sm font-medium text-slate-600">Longitude range (deg)</span>
-          <label><span class="sr-only">Longitude start in degrees</span><input name="lon_min" type="number" value="315"></label>
+          <label><span class="sr-only">Longitude start in degrees</span><input name="lon_min" type="number" value="0"></label>
           <span class="pb-2 text-sm font-medium text-slate-600">to</span>
-          <label><span class="sr-only">Longitude stop in degrees</span><input name="lon_max" type="number" value="45"></label>
+          <label><span class="sr-only">Longitude stop in degrees</span><input name="lon_max" type="number" value="360"></label>
         </div>
       </div>
     </fieldset>
@@ -292,8 +292,9 @@
       <legend class="group-title px-1">HelioMAS boundary profile</legend>
       <div class="control-row">
         <label>Carrington rotation<input name="mas_cr_num" id="mas-cr-number" type="number" value="2000"></label>
+        <label>Map radius (Rs)<input name="mas_source_radius_rs" type="number" min="1" step="0.1" value="30"></label>
         <label><span><input name="mas_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
-        <label><span><input name="mas_use_map_time" id="mas-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+        <label><span><input name="mas_use_map_time" id="mas-use-map-time" type="checkbox" checked> Use map time - 5 days as model start time</span></label>
       </div>
       <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot MAS input</button></div>
     </fieldset>
@@ -302,25 +303,29 @@
       <div class="control-row">
         <div class="datetime-sync-row">
           <label>Map date/time<input name="iswa_map_date" id="iswa-map-date" type="datetime-local" step="1" value="{{ default_iswa_map_datetime }}"></label>
-          <label class="sync-checkbox"><span><input name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked> Use model start time + 5 days</span></label>
+          <label class="sync-checkbox"><span><input name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked> Use map time - 5 days as model start time</span></label>
         </div>
         <p class="wide text-slate-600">Downloads the newest available WSA map at or before the selected map date/time.</p>
         <label><span><input name="iswa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
+        <label>Map radius (Rs)<input name="iswa_source_radius_rs" type="number" min="1" step="0.1" value="21.5"></label>
         <label><span><input name="iswa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
       </div>
       <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot WSA input</button></div>
     </fieldset>
     <fieldset class="group-box source-panel" data-source-panel="omni_group">
       <legend class="group-title px-1">OMNI boundary</legend>
-      <div class="grid gap-5 lg:grid-cols-2">
-        <section class="rounded-xl border border-slate-200 bg-white p-4">
-          <label class="source-choice mb-4">
-            <input type="radio" name="ambient_source_choice" value="insitu_backmapped" checked>
-            <span class="grid gap-1">
-              <span class="font-semibold text-slate-900">Backmapped boundary</span>
-              <span class="text-sm font-normal text-slate-600">Use near-Earth OMNI data to infer the inner-boundary solar wind.</span>
-            </span>
-          </label>
+      <div class="inner-tabs" data-inner-tabs="omni-boundaries">
+        <button type="button" class="inner-tab-button active" data-inner-tab="omni-backmapped"
+                data-omni-source="insitu_backmapped">Backmapped boundary</button>
+        <button type="button" class="inner-tab-button" data-inner-tab="omni-outwards"
+                data-omni-source="omni">Run from 1 AU outwards</button>
+      </div>
+      <div>
+        <section class="product-panel active rounded-xl border border-slate-200 bg-white p-4"
+                 data-inner-panel="omni-backmapped">
+          <input type="radio" class="hidden" name="ambient_source_choice"
+                 value="insitu_backmapped" checked>
+          <p class="mb-4 text-sm text-slate-600">Use near-Earth OMNI data to infer the inner-boundary solar wind.</p>
           <div class="control-row">
             <label>Mode <select name="insitu_mode" id="insitu-mode">
               <option value="forecast">Forecast</option>
@@ -329,53 +334,54 @@
             <label>Forecast time<input name="omni_forecast_datetime" id="omni-forecast-datetime" type="datetime-local" step="1"></label>
           </div>
         </section>
-        <section class="rounded-xl border border-slate-200 bg-white p-4">
-          <label class="source-choice mb-4">
-            <input type="radio" name="ambient_source_choice" value="omni">
-            <span class="grid gap-1">
-              <span class="font-semibold text-slate-900">Set inner boundary to 215 Rs</span>
-              <span class="text-sm font-normal text-slate-600">Start from the 215 Rs OMNI boundary and run outwards.</span>
-            </span>
-          </label>
-          <label><span><input name="use_215_inner_boundary" type="checkbox" checked> Set inner boundary to 215 Rs and run outwards</span></label>
+        <section class="product-panel rounded-xl border border-slate-200 bg-white p-4"
+                 data-inner-panel="omni-outwards">
+          <input type="radio" class="hidden" name="ambient_source_choice" value="omni">
+          <p class="text-sm text-slate-600">Use the OMNI boundary at 1 AU and propagate the solar wind outwards.</p>
+          <label class="mt-4"><span><input name="use_215_inner_boundary" type="checkbox"> Set model inner boundary to 215 Rs</span></label>
         </section>
       </div>
     </fieldset>
     <fieldset class="group-box source-panel" data-source-panel="user_specified_group">
       <legend class="group-title px-1">User-specified boundary</legend>
-      <div class="grid gap-5">
-        <section class="rounded-xl border border-slate-200 bg-white p-4">
-          <label class="source-choice mb-4">
-            <input type="radio" name="ambient_source_choice" value="wsa">
-            <span class="font-semibold text-slate-900">WSA (user specified)</span>
-          </label>
+      <div class="inner-tabs" data-inner-tabs="user-boundaries">
+        <button type="button" class="inner-tab-button" data-inner-tab="user-wsa"
+                data-user-source="wsa">WSA</button>
+        <button type="button" class="inner-tab-button" data-inner-tab="user-cortom"
+                data-user-source="cortom">CorTom</button>
+        <button type="button" class="inner-tab-button active" data-inner-tab="user-line"
+                data-user-source="user_specified">Line method</button>
+      </div>
+      <div>
+        <section class="product-panel rounded-xl border border-slate-200 bg-white p-4"
+                 data-inner-panel="user-wsa">
+          <input type="radio" class="hidden" name="ambient_source_choice" value="wsa">
           <div class="control-row">
             <label class="wide">File<input name="wsa_file" id="wsa-file" type="file" accept=".fits"></label>
+            <label>Map radius (Rs)<input name="wsa_source_radius_rs" type="number" min="1" step="0.1" value="21.5"></label>
             <label><span><input name="wsa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
             <label><span><input name="wsa_speed_reduction" type="checkbox" checked> Apply WSA speed reduction</span></label>
-            <label><span><input name="wsa_use_map_time" id="wsa-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+            <label><span><input name="wsa_use_map_time" id="wsa-use-map-time" type="checkbox" checked> Use map time - 5 days as model start time</span></label>
           </div>
           <p class="wide mt-3 text-slate-600" id="wsa-file-status">No file selected.</p>
           <div class="mt-4"><button type="button" onclick="selectAmbientSourceAndPlot('wsa', this)">Plot WSA input</button></div>
         </section>
-        <section class="rounded-xl border border-slate-200 bg-white p-4">
-          <label class="source-choice mb-4">
-            <input type="radio" name="ambient_source_choice" value="cortom">
-            <span class="font-semibold text-slate-900">CorTom</span>
-          </label>
+        <section class="product-panel rounded-xl border border-slate-200 bg-white p-4"
+                 data-inner-panel="user-cortom">
+          <input type="radio" class="hidden" name="ambient_source_choice" value="cortom">
           <div class="control-row">
             <label class="wide">File<input name="cortom_file" id="cortom-file" type="file" accept=".dat"></label>
+            <label>Map radius (Rs)<input name="cortom_source_radius_rs" type="number" min="1" step="0.1" value="8"></label>
             <label><span><input name="cortom_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
-            <label><span><input name="cortom_use_map_time" id="cortom-use-map-time" type="checkbox" checked> Use map time as model start time</span></label>
+            <label><span><input name="cortom_use_map_time" id="cortom-use-map-time" type="checkbox" checked> Use map time - 5 days as model start time</span></label>
           </div>
           <p class="wide mt-3 text-slate-600" id="cortom-file-status">No file selected.</p>
           <div class="mt-4"><button type="button" onclick="selectAmbientSourceAndPlot('cortom', this)">Plot CorTom input</button></div>
         </section>
-        <section class="rounded-xl border border-slate-200 bg-white p-4">
-          <label class="source-choice mb-4">
-            <input type="radio" name="ambient_source_choice" value="user_specified">
-            <span class="font-semibold text-slate-900">Line method</span>
-          </label>
+        <section class="product-panel active rounded-xl border border-slate-200 bg-white p-4"
+                 data-inner-panel="user-line">
+          <input type="radio" class="hidden" name="ambient_source_choice"
+                 value="user_specified">
           <p class="mb-4 text-sm text-slate-600">Set solar-wind speed (km/s) at 128 Carrington longitudes. Changes are periodic across 0/360°.</p>
           <div class="button-group mb-4">
             <button type="button" class="secondary-button" id="reset-speed-profile">Reset</button>
@@ -535,11 +541,6 @@
               <label>Radius (AU)<input id="plot-radius" type="number" min="0.1" max="10" step="0.1" value="1"></label>
               <label>Fixed model longitude (deg)<input id="timeseries-lon" type="number" min="-360" max="360" step="1" value="0"></label>
             </div>
-            <div class="grid items-end gap-3 sm:grid-cols-[10rem_1fr_auto]">
-              <span class="pb-2 text-sm font-medium text-slate-700">CSV output</span>
-              <input id="timeseries-csv-output" readonly placeholder="Browser download (.csv)">
-              <button type="button" class="secondary-button" id="clear-timeseries-csv">Clear</button>
-            </div>
             <div class="button-group">
               <button type="button" onclick="showPlot('timeseries', this)">Plot Time Series</button>
               <button type="button" class="secondary-button" onclick="downloadTimeseries(this)">Export Time Series CSV</button>
@@ -607,14 +608,9 @@
     </section>
 
     <section class="card tab-panel" data-panel="outputs" role="tabpanel">
-      <section class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="ambient-plot-output">
-        <h3 class="font-semibold text-slate-900">Ambient input preview</h3>
-        <p class="mt-2 text-sm font-medium text-surf-600" id="ambient-product-status">Choose an ambient source and click Plot.</p>
-        <img class="mt-4 hidden w-full rounded-xl border border-slate-200 bg-white shadow-sm"
-             id="ambient-plot-image" alt="Selected ambient input plot" style="max-height: 90vh; object-fit: contain;">
-      </section>
-      <section class="mt-5 hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
+      <section class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
         <h3 class="font-semibold text-slate-900">Figure output</h3>
+        <p class="mt-2 text-sm font-medium text-surf-600" id="ambient-product-status">Choose an ambient source and click Plot.</p>
         <p class="mt-2 text-sm font-medium text-surf-600" id="product-status">Choose a plot above to render it here.</p>
         <div class="mt-4 space-y-4" id="plot-history"></div>
       </section>
@@ -719,8 +715,11 @@
       }
       function downloadTimeseries(button = null) {
         const observer = document.getElementById("timeseries-observer").value;
-        document.getElementById("timeseries-csv-output").value =
-          `SURF_${observer}_timeseries.csv`;
+        let filename = window.prompt("CSV filename", `SURF_${observer}_timeseries.csv`);
+        if (filename === null) return;
+        filename = filename.trim();
+        if (!filename) filename = `SURF_${observer}_timeseries.csv`;
+        if (!filename.toLowerCase().endsWith(".csv")) filename += ".csv";
         const csvUrl = `${runBase}/timeseries.csv?${new URLSearchParams(values())}`;
         beginTask(button, "Exporting CSV...");
         fetch(csvUrl)
@@ -732,7 +731,7 @@
             const objectUrl = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = objectUrl;
-            link.download = `SURF_${observer}_timeseries.csv`;
+            link.download = filename;
             link.click();
             URL.revokeObjectURL(objectUrl);
             finishTask(button, "CSV Ready");
@@ -742,14 +741,6 @@
               `CSV export failed: ${error.message}`;
             failTask(button);
           });
-        return;
-        const legacyObserver = document.getElementById("timeseries-observer").value;
-        if (legacyObserver === "custom") {
-          document.getElementById("product-status").textContent =
-            "Choose a standard observer for CSV export.";
-          return;
-        }
-        window.location.href = `${runBase}/timeseries.csv?observer=${encodeURIComponent(legacyObserver)}`;
       }
       function downloadMovie(kind = "map", button = null) {
         const withTimeseries = kind === "timeseries";
@@ -889,37 +880,40 @@
       outputPanel.classList.remove("hidden");
     }
 
-    function savePlotOutput(entry) {
+    function saveFigureOutput(entry) {
       const outputs = readSavedOutputs();
-      outputs.plots = [entry, ...(outputs.plots || [])].slice(0, 24);
+      outputs.figures = [entry, ...(outputs.figures || [])].slice(0, 24);
       writeSavedOutputs(outputs);
     }
 
+    function savePlotOutput(entry) {
+      saveFigureOutput(entry);
+    }
+
     function saveAmbientOutput(entry) {
-      const outputs = readSavedOutputs();
-      outputs.ambient = entry;
-      writeSavedOutputs(outputs);
+      saveFigureOutput(entry);
+    }
+
+    function addAmbientOutput(entry, prepend = true) {
+      addPlotOutput(entry, prepend);
     }
 
     function restoreSavedOutputs() {
       const outputs = readSavedOutputs();
-      (outputs.plots || []).forEach(entry => addPlotOutput(entry, false));
+      let figures = outputs.figures;
+      if (!Array.isArray(figures)) {
+        const legacyAmbient = Array.isArray(outputs.ambient)
+          ? outputs.ambient
+          : (outputs.ambient ? [outputs.ambient] : []);
+        figures = [...(outputs.plots || []), ...legacyAmbient];
+      }
+      figures.forEach(entry => addPlotOutput(entry, false));
       const status = document.getElementById("product-status");
-      if (status && outputs.plots && outputs.plots.length) {
+      if (status && figures.length) {
         status.textContent = "Newest figure is shown first.";
       }
-      const ambient = outputs.ambient;
-      const ambientPanel = document.getElementById("ambient-plot-output");
-      const ambientImage = document.getElementById("ambient-plot-image");
       const ambientStatus = document.getElementById("ambient-product-status");
-      if (ambient && ambientImage && ambientPanel) {
-        ambientImage.src = ambient.src;
-        ambientImage.style.display = "block";
-        ambientImage.style.maxHeight = "85vh";
-        ambientImage.style.objectFit = "contain";
-        ambientPanel.classList.remove("hidden");
-        if (ambientStatus) ambientStatus.textContent = "";
-      }
+      if (figures.length && ambientStatus) ambientStatus.textContent = "";
     }
 
     restoreSavedOutputs();
@@ -1163,14 +1157,10 @@
     const ambientTabButtons = [...document.querySelectorAll("[data-ambient-tab]")];
 
     function clearAmbientPreview() {
-      const output = document.getElementById("ambient-plot-output");
-      const image = document.getElementById("ambient-plot-image");
       const status = document.getElementById("ambient-product-status");
-      if (status && (!image || !image.src)) {
+      const history = document.getElementById("plot-history");
+      if (status && (!history || !history.children.length)) {
         status.textContent = "Choose an ambient source and click Plot.";
-      }
-      if (output && (!image || !image.src)) {
-        output.classList.add("hidden");
       }
     }
 
@@ -1192,6 +1182,28 @@
       document.querySelectorAll('[name="ambient_source_choice"]').forEach(choice => {
         choice.checked = choice.value === source;
       });
+      if (["insitu_backmapped", "omni"].includes(source)) {
+        const selectedPanel = source === "omni" ? "omni-outwards" : "omni-backmapped";
+        document.querySelectorAll("[data-omni-source]").forEach(button => {
+          button.classList.toggle("active", button.dataset.omniSource === source);
+        });
+        document.querySelectorAll('[data-source-panel="omni_group"] [data-inner-panel]').forEach(panel => {
+          panel.classList.toggle("active", panel.dataset.innerPanel === selectedPanel);
+        });
+      }
+      if (["wsa", "cortom", "user_specified"].includes(source)) {
+        const selectedPanel = {
+          wsa: "user-wsa",
+          cortom: "user-cortom",
+          user_specified: "user-line"
+        }[source];
+        document.querySelectorAll("[data-user-source]").forEach(button => {
+          button.classList.toggle("active", button.dataset.userSource === source);
+        });
+        document.querySelectorAll('[data-source-panel="user_specified_group"] [data-inner-panel]').forEach(panel => {
+          panel.classList.toggle("active", panel.dataset.innerPanel === selectedPanel);
+        });
+      }
       disableDonkiForOutwardOmni(source);
     }
 
@@ -1219,6 +1231,18 @@
       choice.addEventListener("change", () => {
         if (!choice.checked) return;
         setAmbientSource(choice.value);
+        invalidateCompletedRun();
+      });
+    });
+    document.querySelectorAll("[data-omni-source]").forEach(button => {
+      button.addEventListener("click", () => {
+        setAmbientSource(button.dataset.omniSource);
+        invalidateCompletedRun();
+      });
+    });
+    document.querySelectorAll("[data-user-source]").forEach(button => {
+      button.addEventListener("click", () => {
+        setAmbientSource(button.dataset.userSource);
         invalidateCompletedRun();
       });
     });
@@ -1391,7 +1415,6 @@
     }
 
     function showAmbientPlot(button) {
-      const image = document.getElementById("ambient-plot-image");
       const status = document.getElementById("ambient-product-status");
       const form = document.querySelector('form[method="post"]');
       if (!form) {
@@ -1418,15 +1441,22 @@
           return response.blob();
         })
         .then(async blob => {
+          const timestamp = new Date();
+          const source = document.getElementById("ambient-source").value;
+          const sourceLabel = {
+            mas: "MAS",
+            wsa_iswa: "WSA (ISWA)",
+            wsa: "WSA",
+            cortom: "CorTom"
+          }[source] || source;
           const entry = {
+            caption: `${sourceLabel} ambient preview generated ${timestamp.toLocaleTimeString()}`,
+            alt: `${sourceLabel} ambient input preview`,
+            filename: `SURF_${source}_ambient_${timestamp.toISOString().replace(/[:.]/g, "-")}.png`,
             src: await blobToDataUrl(blob)
           };
-          image.src = entry.src;
-          image.style.display = "block";
-          image.style.maxHeight = "85vh";
-          image.style.objectFit = "contain";
-          document.getElementById("ambient-plot-output")?.classList.remove("hidden");
-          status.textContent = "";
+          addAmbientOutput(entry);
+          status.textContent = "Newest figure is shown first.";
           saveAmbientOutput(entry);
           markOutputsTabHasNewContent();
           if (button) {
@@ -1815,11 +1845,12 @@
       ) / 86400000;
       if (Number.isFinite(offset)) cmeLaunchDay.value = offset.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
     }
-    function syncIswaMapDateFromModelStart() {
-      if (!iswaMapDate || !iswaUseModelStart || !iswaUseModelStart.checked) return;
-      const mapDate = utcInputDate(modelStartInput);
-      mapDate.setUTCDate(mapDate.getUTCDate() + 5);
-      iswaMapDate.value = mapDate.toISOString().slice(0, 19);
+    function syncModelStartFromIswaMapDate() {
+      if (!iswaMapDate || !iswaUseModelStart || !iswaUseModelStart.checked || !iswaMapDate.value) return;
+      const modelStart = utcInputDate(iswaMapDate);
+      modelStart.setUTCDate(modelStart.getUTCDate() - 5);
+      modelStartInput.value = modelStart.toISOString().slice(0, 19);
+      updateCoordinates({datetime: modelStartInput.value}).catch(console.error);
     }
     function syncOmniForecastTime() {
       if (!omniForecastDatetime || !modelStartInput.value) return;
@@ -1833,8 +1864,8 @@
     }
     function syncIswaMapDateState() {
       if (!iswaMapDate || !iswaUseModelStart) return;
-      iswaMapDate.disabled = iswaUseModelStart.checked;
-      syncIswaMapDateFromModelStart();
+      iswaMapDate.disabled = false;
+      syncModelStartFromIswaMapDate();
       syncOmniForecastTime();
     }
     function syncLongitudeControls() {
@@ -1856,7 +1887,6 @@
       modelCrLongitude.value = coordinates.cr_lon.toFixed(2);
       modelLatitude.value = coordinates.earth_latitude.toFixed(2);
       syncCmeDatetimeFromDay();
-      syncIswaMapDateFromModelStart();
       syncOmniForecastTime();
       clearStaleDonkiCmes();
     }
@@ -1870,7 +1900,6 @@
         "Run interval changed; reload the cone CME list from DONKI.";
     }
     modelStartInput.addEventListener("change", () => {
-      syncIswaMapDateFromModelStart();
       syncOmniForecastTime();
       updateCoordinates({datetime: modelStartInput.value}).catch(console.error);
     });
@@ -1882,6 +1911,7 @@
     }
     if (iswaUseModelStart) {
       iswaUseModelStart.addEventListener("change", syncIswaMapDateState);
+      iswaMapDate.addEventListener("change", syncModelStartFromIswaMapDate);
       syncIswaMapDateState();
     }
     [modelCrNumber, modelCrLongitude].forEach(input => {
@@ -1918,12 +1948,15 @@
 
     const masCrNumber = document.getElementById("mas-cr-number");
     const masUseMapTime = document.getElementById("mas-use-map-time");
-    function applyMasMapTime() {
+    async function applyMasMapTime() {
       if (!masUseMapTime.checked) return;
-      updateCoordinates({cr_num: masCrNumber.value, cr_lon: 360}).catch(console.error);
+      await updateCoordinates({cr_num: masCrNumber.value, cr_lon: 360});
+      const modelStart = utcInputDate(modelStartInput);
+      modelStart.setUTCDate(modelStart.getUTCDate() - 5);
+      await updateCoordinates({datetime: modelStart.toISOString().slice(0, 19)});
     }
-    masCrNumber.addEventListener("change", applyMasMapTime);
-    masUseMapTime.addEventListener("change", applyMasMapTime);
+    masCrNumber.addEventListener("change", () => applyMasMapTime().catch(console.error));
+    masUseMapTime.addEventListener("change", () => applyMasMapTime().catch(console.error));
 
     async function syncFileMapTime(source, fileInputId, statusId, useMapTimeId) {
       const fileInput = document.getElementById(fileInputId);
@@ -1951,9 +1984,11 @@
       }
       const payload = await response.json();
       if (payload.datetime) {
-        modelStartInput.value = payload.datetime;
+        const modelStart = new Date(`${payload.datetime}Z`);
+        modelStart.setUTCDate(modelStart.getUTCDate() - 5);
+        modelStartInput.value = modelStart.toISOString().slice(0, 19);
         modelStartInput.dispatchEvent(new Event("change", {bubbles: true}));
-        if (status) status.textContent = `Selected ${file.name}; run start time updated from map time.`;
+        if (status) status.textContent = `Selected ${file.name}; run start set to map time - 5 days.`;
       } else if (status) {
         status.textContent = `Selected ${file.name}; map time not found.`;
       }
@@ -2033,13 +2068,6 @@
       timeseriesObserver.addEventListener("change", syncTimeseriesLocation);
       syncTimeseriesLocation();
     }
-    const clearTimeseriesCsv = document.getElementById("clear-timeseries-csv");
-    if (clearTimeseriesCsv) {
-      clearTimeseriesCsv.addEventListener("click", () => {
-        document.getElementById("timeseries-csv-output").value = "";
-      });
-    }
-
     const tabButtons = [...document.querySelectorAll("[data-tab]")];
     const tabPanels = [...document.querySelectorAll("[data-panel]")];
 

@@ -45,8 +45,8 @@ def build_uniform_boundary_code(request: SimulationRequest) -> str:
     else:
         lines.extend(
             [
-                f"    lon_start={float(state.get('lon_min', 315.0))} * u.deg,",
-                f"    lon_stop={float(state.get('lon_max', 45.0))} * u.deg,",
+                f"    lon_start={float(state.get('lon_min', 0.0))} * u.deg,",
+                f"    lon_stop={float(state.get('lon_max', 360.0))} * u.deg,",
             ]
         )
     lines.extend(
@@ -140,6 +140,7 @@ def build_generated_code(request: SimulationRequest) -> str:
             f"v_boundary = np.array({ambient['speed_profile_kms']!r}) * (u.km/u.s)"
         )
     elif source == "mas":
+        source_radius_rs = float(ambient.get("source_radius_rs", 30.0))
         lines.append(f"v_boundary = sin.get_MAS_long_profile({ambient['cr_num']}, latitude)")
         if include_bpol:
             lines.append(f"b_boundary = sin.get_MAS_br_long_profile({ambient['cr_num']}, latitude)")
@@ -152,11 +153,12 @@ def build_generated_code(request: SimulationRequest) -> str:
                 ]
             )
         if ambient.get("decelerate_to_inner_boundary", True):
-            call = "sin.map_v_boundary_inwards(v_boundary, 30*u.solRad, rmin, acc_profile=acc_profile"
+            call = f"sin.map_v_boundary_inwards(v_boundary, {source_radius_rs}*u.solRad, rmin, acc_profile=acc_profile"
             call += ", gamma=gamma" if solver != "huxt" else ""
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lines.append(("v_boundary, b_boundary = " if include_bpol else "v_boundary = ") + call)
     elif source == "wsa":
+        source_radius_rs = float(ambient.get("source_radius_rs", 21.5))
         lines.append(
             f"v_boundary = sin.get_WSA_long_profile(r{ambient['filepath']!r}, latitude)"
         )
@@ -167,12 +169,13 @@ def build_generated_code(request: SimulationRequest) -> str:
         if ambient.get("apply_wsa_speed_reduction", False):
             lines.extend(_wsa_speed_reduction_lines())
         if ambient.get("decelerate_to_inner_boundary", True):
-            call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin, acc_profile=acc_profile"
+            call = f"sin.map_v_boundary_inwards(v_boundary, {source_radius_rs}*u.solRad, rmin, acc_profile=acc_profile"
             call += ", gamma=gamma" if solver != "huxt" else ""
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lhs = "v_boundary, b_boundary = " if include_bpol else "v_boundary = "
             lines.append(lhs + call)
     elif source == "wsa_iswa":
+        source_radius_rs = float(ambient.get("source_radius_rs", 21.5))
         map_datetime = ambient.get("iswa_map_datetime", state["start_datetime"])
         lines.append(
             f"iswa_map_time = datetime.datetime.fromisoformat({map_datetime!r})"
@@ -184,12 +187,13 @@ def build_generated_code(request: SimulationRequest) -> str:
         if ambient.get("apply_wsa_speed_reduction", False):
             lines.extend(_wsa_speed_reduction_lines())
         if ambient.get("decelerate_to_inner_boundary", True):
-            call = "sin.map_v_boundary_inwards(v_boundary, 21.5*u.solRad, rmin, acc_profile=acc_profile"
+            call = f"sin.map_v_boundary_inwards(v_boundary, {source_radius_rs}*u.solRad, rmin, acc_profile=acc_profile"
             call += ", gamma=gamma" if solver != "huxt" else ""
             call += ", b_orig=b_boundary)" if include_bpol else ")"
             lhs = "v_boundary, b_boundary = " if include_bpol else "v_boundary = "
             lines.append(lhs + call)
     elif source == "cortom":
+        source_radius_rs = float(ambient.get("source_radius_rs", 8.0))
         lines.append(
             f"v_boundary = sin.get_CorTom_long_profile(r{ambient['filepath']!r}, latitude)"
         )
@@ -197,7 +201,7 @@ def build_generated_code(request: SimulationRequest) -> str:
             gamma_arg = ", gamma=gamma" if solver != "huxt" else ""
             lines.append(
                 "v_boundary = sin.map_v_boundary_inwards("
-                f"v_boundary, 8.0*u.solRad, rmin, acc_profile=acc_profile{gamma_arg})"
+                f"v_boundary, {source_radius_rs}*u.solRad, rmin, acc_profile=acc_profile{gamma_arg})"
             )
     elif source in {"insitu_backmapped", "omni"}:
         lines.insert(6, "import surf.surf_insitu as sinsit")
@@ -222,8 +226,8 @@ def build_generated_code(request: SimulationRequest) -> str:
             longitude_args = ""
             if not state.get("is_1d", False):
                 longitude_args = (
-                    f", lon_start={float(state.get('lon_min', 315))}*u.deg, "
-                    f"lon_stop={float(state.get('lon_max', 45))}*u.deg"
+                    f", lon_start={float(state.get('lon_min', 0))}*u.deg, "
+                    f"lon_stop={float(state.get('lon_max', 360))}*u.deg"
                 )
             lines.extend(
                 [
@@ -244,8 +248,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                 if state.get("is_1d")
                 else (
                     f", frame={state.get('frame', 'sidereal')!r}"
-                    f", lon_start={float(state.get('lon_min', 315))}*u.deg"
-                    f", lon_stop={float(state.get('lon_max', 45))}*u.deg"
+                    f", lon_start={float(state.get('lon_min', 0))}*u.deg"
+                    f", lon_stop={float(state.get('lon_max', 360))}*u.deg"
                 )
             )
             lines.append(
@@ -255,8 +259,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                 longitude_args = ""
                 if not state.get("is_1d", False):
                     longitude_args = (
-                        f", lon_start={float(state.get('lon_min', 315))}*u.deg"
-                        f", lon_stop={float(state.get('lon_max', 45))}*u.deg"
+                        f", lon_start={float(state.get('lon_min', 0))}*u.deg"
+                        f", lon_stop={float(state.get('lon_max', 360))}*u.deg"
                     )
                 lines.append(
                     "model = sinsit.omniSURF_1au_out("
@@ -318,8 +322,8 @@ def build_generated_code(request: SimulationRequest) -> str:
         else:
             args.extend(
                 [
-                    f"lon_start={float(state.get('lon_min', 315))}*u.deg",
-                    f"lon_stop={float(state.get('lon_max', 45))}*u.deg",
+                    f"lon_start={float(state.get('lon_min', 0))}*u.deg",
+                    f"lon_stop={float(state.get('lon_max', 360))}*u.deg",
                 ]
             )
         lines.append("model = s.SURF(" + ", ".join(args) + ")")

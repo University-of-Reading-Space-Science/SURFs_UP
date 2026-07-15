@@ -68,7 +68,7 @@ def test_preview_supports_wsa_iswa():
     assert b"get_WSA_from_ISWA" in response.data
 
 
-def test_preview_uses_model_start_for_wsa_iswa_map_time_when_checked():
+def test_preview_uses_iswa_map_time_minus_five_days_as_model_start_when_checked():
     client = create_app({"TESTING": True}).test_client()
     response = client.post(
         "/",
@@ -94,8 +94,8 @@ def test_preview_uses_model_start_for_wsa_iswa_map_time_when_checked():
 
     body = html.unescape(response.get_data(as_text=True))
     assert response.status_code == 200
-    assert "iswa_map_time = datetime.datetime.fromisoformat('2026-07-08T12:00:00')" in body
-    assert "2026-07-07T09:30:00" not in body
+    assert "start_time = datetime.datetime.fromisoformat('2026-07-02 09:30:00')" in body
+    assert "iswa_map_time = datetime.datetime.fromisoformat('2026-07-07T09:30:00')" in body
 
 
 def test_preview_passes_advanced_model_grid_settings():
@@ -141,7 +141,7 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'id="run-surf-button"' in response.data
     assert b'id="iswa-map-date"' in response.data
     assert b'name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked' in response.data
-    assert b"Use model start time + 5 days" in response.data
+    assert response.data.count(b"Use map time - 5 days as model start time") == 4
     assert b"busy-button" in response.data
     assert b"Grabbing and processing input data" in response.data
     assert b"Preparing run..." in response.data
@@ -195,7 +195,10 @@ def test_template_turns_off_donki_for_omni_outward_selection():
 def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
 
-    assert ">Set inner boundary to 215 Rs</span>" in template
+    assert ">Run from 1 AU outwards</button>" in template
+    assert 'data-inner-tabs="omni-boundaries"' in template
+    assert 'data-omni-source="insitu_backmapped">Backmapped boundary</button>' in template
+    assert 'data-omni-source="omni">Run from 1 AU outwards</button>' in template
     assert ">Outward propagation</span>" not in template
     assert ">Model parameters</h2>" not in template
     assert ">Ambient solar wind</h2>" not in template
@@ -205,6 +208,60 @@ def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
     assert '<h2 class="mt-0">Movies</h2>' not in template
     assert "text-base font-semibold" in template
     assert "hover:border-cyan-200" in template
+
+
+def test_csv_export_prompts_for_filename_without_output_box():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'id="timeseries-csv-output"' not in template
+    assert 'id="clear-timeseries-csv"' not in template
+    assert 'window.prompt("CSV filename"' in template
+    assert "link.download = filename" in template
+
+
+def test_omni_outwards_boundary_checkbox_is_off_by_default():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'name="use_215_inner_boundary" type="checkbox"' in template
+    assert 'name="use_215_inner_boundary" type="checkbox" checked' not in template
+    assert "Set model inner boundary to 215 Rs" in template
+
+
+def test_ambient_previews_accumulate_in_outputs():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'id="ambient-plot-history"' not in template
+    assert template.count('id="plot-history"') == 1
+    assert "addAmbientOutput(entry);" in template
+    assert "addPlotOutput(entry, prepend);" in template
+    assert "outputs.figures = [entry," in template
+    assert "filename: `SURF_${source}_ambient_" in template
+
+
+def test_model_defaults_to_1d_and_full_longitude_range():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'name="is_1d" id="model-is-1d" type="checkbox" checked' in template
+    assert 'name="lon_min" type="number" value="0"' in template
+    assert 'name="lon_max" type="number" value="360"' in template
+
+
+def test_user_specified_sources_are_subtabs():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'data-inner-tabs="user-boundaries"' in template
+    assert 'data-user-source="wsa">WSA</button>' in template
+    assert 'data-user-source="cortom">CorTom</button>' in template
+    assert 'data-user-source="user_specified">Line method</button>' in template
+
+
+def test_ambient_source_radii_are_editable_with_existing_defaults():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'name="mas_source_radius_rs" type="number" min="1" step="0.1" value="30"' in template
+    assert 'name="iswa_source_radius_rs" type="number" min="1" step="0.1" value="21.5"' in template
+    assert 'name="wsa_source_radius_rs" type="number" min="1" step="0.1" value="21.5"' in template
+    assert 'name="cortom_source_radius_rs" type="number" min="1" step="0.1" value="8"' in template
 
 
 def test_timeseries_is_default_plot_product_and_omni_is_earth_only():
@@ -259,8 +316,6 @@ def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
     assert '"outputs"' not in template[
         template.index("function hidePostRunTabs()"):template.index("function invalidateCompletedRun()")
     ]
-    assert 'id="ambient-plot-output"' in template[
-        template.index('data-panel="outputs"'):]
     assert 'id="plot-output"' in template[
         template.index('data-panel="outputs"'):]
     assert 'id="movie-output-panel"' in template[

@@ -172,15 +172,21 @@ class MasAmbientTab(QWidget):
         self.cr_spin = QSpinBox()
         self.cr_spin.setRange(1, 9999)
         self.cr_spin.setValue(2000)
+        self.source_radius_spin = QDoubleSpinBox()
+        self.source_radius_spin.setRange(1.0, 1000.0)
+        self.source_radius_spin.setDecimals(1)
+        self.source_radius_spin.setValue(30.0)
+        self.source_radius_spin.setSuffix(" Rs")
         self.decelerate_toggle = QCheckBox("Decelerate to inner boundary")
         self.decelerate_toggle.setChecked(True)
-        self.use_map_time_toggle = QCheckBox("Use map time as model start time")
+        self.use_map_time_toggle = QCheckBox("Use map time - 5 days as model start time")
         self.use_map_time_toggle.setChecked(True)
         self.use_map_time_toggle.toggled.connect(self._on_use_map_time_toggled)
         self.plot_button = QPushButton("Extract and Plot Vin")
         self.plot_button.setProperty("role", "primary")
         self.plot_button.clicked.connect(self.plot_profile)
         form.addRow("Carrington rotation", self.cr_spin)
+        form.addRow("Map radius", self.source_radius_spin)
         form.addRow("", self.decelerate_toggle)
         form.addRow("", self.use_map_time_toggle)
         form.addRow(self.plot_button)
@@ -191,6 +197,7 @@ class MasAmbientTab(QWidget):
     def get_state(self):
         return {
             "cr_num": self.cr_spin.value(),
+            "source_radius_rs": self.source_radius_spin.value(),
             "decelerate_to_inner_boundary": self.decelerate_toggle.isChecked(),
         }
 
@@ -212,7 +219,9 @@ class MasAmbientTab(QWidget):
 
     def emit_map_time_if_enabled(self):
         if self.use_map_time_toggle.isChecked():
-            self.start_time_selected.emit(self._mas_map_time())
+            self.start_time_selected.emit(
+                self._mas_map_time() - datetime.timedelta(days=5)
+            )
 
     def _on_use_map_time_toggled(self, enabled: bool):
         if enabled:
@@ -232,7 +241,7 @@ class MasAmbientTab(QWidget):
                 acc_profile = "huxt" if self.model_solver == "huxt" else "parker"
                 v_mapped = sin.map_v_boundary_inwards(
                     v_orig,
-                    30.0 * u.solRad,
+                    self.source_radius_spin.value() * u.solRad,
                     self.model_inner_boundary_rs * u.solRad,
                     acc_profile=acc_profile,
                 )
@@ -242,7 +251,11 @@ class MasAmbientTab(QWidget):
             fig, (ax_map, ax_v) = plt.subplots(2, 1, figsize=(10, 9))
             _draw_speed_map(ax_map, speed_map, longitudes, latitudes, latitude.value, f"MAS speed map | CR {cr_num}")
             ax_map.set_xlabel("Carrington longitude [deg]")
-            ax_v.plot(lon, v_orig.to_value(u.km / u.s), label="Original at 30 Rs")
+            ax_v.plot(
+                lon,
+                v_orig.to_value(u.km / u.s),
+                label=f"Original at {self.source_radius_spin.value():.1f} Rs",
+            )
             ax_v.plot(lon, v_mapped.to_value(u.km / u.s), linestyle="--", label=f"Mapped to {self.model_inner_boundary_rs:.1f} Rs")
             ax_v.set_xlim(0.0, 360.0)
             ax_v.set_xlabel("Carrington longitude [deg]")
@@ -548,12 +561,21 @@ class FileAmbientTab(QWidget):
             self.wsa_speed_reduction_toggle.setChecked(True)
 
         if self.include_use_map_time_option:
-            self.use_map_time_toggle = QCheckBox("Use map time as model start time")
+            self.use_map_time_toggle = QCheckBox("Use map time - 5 days as model start time")
             self.use_map_time_toggle.setChecked(True)
             self.use_map_time_toggle.toggled.connect(self._on_use_map_time_toggled)
 
+        if self.source_radius_rs is not None:
+            self.source_radius_spin = QDoubleSpinBox()
+            self.source_radius_spin.setRange(1.0, 1000.0)
+            self.source_radius_spin.setDecimals(1)
+            self.source_radius_spin.setValue(float(self.source_radius_rs))
+            self.source_radius_spin.setSuffix(" Rs")
+
         form.addRow("File", file_row)
         form.addRow("Detected start time", self.detected_time_label)
+        if self.source_radius_rs is not None:
+            form.addRow("Map radius", self.source_radius_spin)
         if self.include_wsa_speed_reduction:
             form.addRow("", self.wsa_speed_reduction_toggle)
         if self.include_decelerate_option:
@@ -595,8 +617,8 @@ class FileAmbientTab(QWidget):
             if parsed_time is not None:
                 self.detected_time_label.setText(parsed_time.strftime("%Y-%m-%d %H:%M:%S UTC"))
                 if self._should_apply_map_time():
-                    self.start_time_selected.emit(parsed_time)
-                    self.status_message.emit("Run start time updated from selected file map time.")
+                    self.start_time_selected.emit(parsed_time - datetime.timedelta(days=5))
+                    self.status_message.emit("Run start time set to map time - 5 days.")
                 else:
                     self.status_message.emit("File selected. Map time not applied to model start.")
             else:
@@ -608,6 +630,8 @@ class FileAmbientTab(QWidget):
     def get_state(self):
         """Return selected file path for code generation."""
         state = {"filepath": self.selected_file}
+        if self.source_radius_rs is not None:
+            state["source_radius_rs"] = self.source_radius_spin.value()
         if self.include_decelerate_option:
             state["decelerate_to_inner_boundary"] = self.decelerate_toggle.isChecked()
         if self.include_wsa_speed_reduction:
@@ -656,8 +680,10 @@ class FileAmbientTab(QWidget):
     def _on_use_map_time_toggled(self, enabled: bool):
         """Apply stored parsed map time when enabled and available."""
         if enabled and self.last_parsed_time is not None:
-            self.start_time_selected.emit(self.last_parsed_time)
-            self.status_message.emit("Run start time updated from selected file map time.")
+            self.start_time_selected.emit(
+                self.last_parsed_time - datetime.timedelta(days=5)
+            )
+            self.status_message.emit("Run start time set to map time - 5 days.")
 
     def emit_map_time_if_enabled(self):
         """Public helper to apply parsed map time when this option is enabled."""
@@ -665,7 +691,9 @@ class FileAmbientTab(QWidget):
             return
         if not self._should_apply_map_time():
             return
-        self.start_time_selected.emit(self.last_parsed_time)
+        self.start_time_selected.emit(
+            self.last_parsed_time - datetime.timedelta(days=5)
+        )
 
     def plot_profile(self):
         """Extract and plot source profile together with mapped-to-rmin profile."""
@@ -697,7 +725,11 @@ class FileAmbientTab(QWidget):
                 speed_map, map_longitudes, map_latitudes = self.speed_map_loader(
                     self.selected_file
                 )
-            source_radius_rs = 21.5 if self.source_radius_rs is None else self.source_radius_rs
+            source_radius_rs = (
+                21.5
+                if self.source_radius_rs is None
+                else self.source_radius_spin.value()
+            )
             apply_wsa_reduction = (
                 self.wsa_speed_reduction_toggle.isChecked()
                 if self.include_wsa_speed_reduction
@@ -888,7 +920,7 @@ class WsaAmbientTab(FileAmbientTab):
             )
             self.iswa_datetime_edit.dateTimeChanged.connect(self._on_iswa_datetime_changed)
             self.use_model_start_for_iswa_toggle = QCheckBox(
-                "Use model start time + 5 days"
+                "Use map time - 5 days as model start time"
             )
             self.use_model_start_for_iswa_toggle.setChecked(True)
             self.use_model_start_for_iswa_toggle.toggled.connect(
@@ -952,8 +984,6 @@ class WsaAmbientTab(FileAmbientTab):
     def set_model_start_datetime(self, dt: datetime.datetime):
         """Track the model start used by other download-backed ambient sources."""
         super().set_model_start_datetime(dt)
-        if self.use_iswa_download and self.use_model_start_for_iswa_toggle.isChecked():
-            self._set_iswa_datetime(dt + datetime.timedelta(days=5))
 
     def _set_iswa_datetime(self, dt: datetime.datetime):
         """Set the ISWA request datetime without double-emitting change handling."""
@@ -965,12 +995,12 @@ class WsaAmbientTab(FileAmbientTab):
         self._on_iswa_datetime_changed()
 
     def _sync_iswa_datetime_state(self):
-        """Disable manual ISWA datetime edits while synced to model start."""
+        """Apply the selected ISWA map time to the model start when enabled."""
         synced = self.use_model_start_for_iswa_toggle.isChecked()
-        self.iswa_datetime_edit.setEnabled(not synced)
+        self.iswa_datetime_edit.setEnabled(True)
         if synced:
-            self._set_iswa_datetime(
-                self.model_start_datetime + datetime.timedelta(days=5)
+            self.start_time_selected.emit(
+                self._iswa_requested_datetime() - datetime.timedelta(days=5)
             )
 
     def _on_use_model_start_for_iswa_toggled(self, _enabled=None):
@@ -983,6 +1013,10 @@ class WsaAmbientTab(FileAmbientTab):
         self.file_edit.clear()
         self.last_parsed_time = None
         self.detected_time_label.setText("No ISWA map downloaded for this date/time.")
+        if self.use_model_start_for_iswa_toggle.isChecked():
+            self.start_time_selected.emit(
+                self._iswa_requested_datetime() - datetime.timedelta(days=5)
+            )
 
     def _iswa_requested_datetime(self):
         """Return the selected ISWA request datetime."""
