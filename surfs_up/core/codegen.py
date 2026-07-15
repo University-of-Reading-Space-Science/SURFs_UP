@@ -342,7 +342,11 @@ def build_generated_code(request: SimulationRequest) -> str:
         lines.extend(
             [
                 "donki_end_time = start_time + datetime.timedelta(days=simtime.to_value(u.day))",
-                "cme_list.extend(sin.get_DONKI_cme_list(model, start_time, donki_end_time))",
+                "donki_cmes = sin.get_DONKI_cme_list(model, start_time, donki_end_time)",
+                "if solver == 'hydro':",
+                "    for donki_cme in donki_cmes:",
+                "        donki_cme.profile_type = 'sinusoidal'",
+                "cme_list.extend(donki_cmes)",
             ]
         )
     literal_cmes = [

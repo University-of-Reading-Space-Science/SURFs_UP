@@ -187,7 +187,8 @@
         {% if run_id %}
         <span class="mx-3 border-l border-slate-200" id="post-run-tab-spacer"></span>
         <button class="tab-button" type="button" role="tab" data-tab="plots">Plots</button>
-        <button class="tab-button" type="button" role="tab" data-tab="movies">Movies</button>
+        <button class="tab-button" type="button" role="tab" data-tab="movies"
+                {% if not show_movies %}disabled aria-disabled="true" title="Movies are unavailable for 1D runs"{% endif %}>Movies</button>
         {% endif %}
       </div>
       <button class="tab-button" type="button" role="tab" data-tab="outputs">Outputs</button>
@@ -446,8 +447,8 @@
         <label>Plasma mode<select id="cme-plasma-mode"><option>Fraction of ambient</option><option>Absolute values</option></select></label>
         <label>Density fraction<input id="cme-density-fraction" type="number" value="1" step="0.1"></label>
         <label>Temperature fraction<input id="cme-temperature-fraction" type="number" value="1" step="0.1"></label>
-        <label>CME density (p+/cm³)<input id="cme-density" type="number" value="100" step="1"></label>
-        <label>CME temperature (K)<input id="cme-temperature" type="number" value="100000" step="1000"></label>
+        <label>CME density (p+/cm³)<input id="cme-density" type="number" value="{{ default_cme_density_pcc }}" step="1"></label>
+        <label>CME temperature (K)<input id="cme-temperature" type="number" value="{{ default_cme_temperature_k }}" step="1000"></label>
         <label><span><input id="cme-expansion" type="checkbox"> Expansion</span></label>
         <label><span><input id="cme-fixed-duration" type="checkbox" checked> Fixed duration</span></label>
       </div>
@@ -553,6 +554,7 @@
       {% endif %}
     </section>
 
+    {% if show_movies %}
     <section class="card tab-panel" data-panel="movies" role="tabpanel">
       {% if run_id %}
       <form class="form-grid wide" id="movies-form" onsubmit="return false">
@@ -606,6 +608,7 @@
       <p class="text-slate-500">Run SURF successfully to enable movies.</p>
       {% endif %}
     </section>
+    {% endif %}
 
     <section class="card tab-panel" data-panel="outputs" role="tabpanel">
       <section class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
@@ -1579,6 +1582,15 @@
         });
         document.getElementById("cme-expansion").checked = Boolean(cme.cme_expansion);
         document.getElementById("cme-fixed-duration").checked = Boolean(cme.cme_fixed_duration);
+      } else {
+        document.getElementById("cme-profile").value =
+          document.querySelector('[name="solver"]').value === "hydro"
+            ? "sinusoidal"
+            : "square";
+        document.getElementById("cme-density-fraction").value = "1";
+        document.getElementById("cme-temperature-fraction").value = "1";
+        document.getElementById("cme-density").value = "{{ default_cme_density_pcc }}";
+        document.getElementById("cme-temperature").value = "{{ default_cme_temperature_k }}";
       }
       cmeEditor.showModal();
     }
@@ -1632,7 +1644,7 @@
         const start = document.querySelector('[name="start_datetime"]').value;
         const duration = document.querySelector('[name="simtime_days"]').value;
         const response = await fetch(
-          `{{ url_for("donki_cmes") }}?start=${encodeURIComponent(start)}&duration=${encodeURIComponent(duration)}`
+          `{{ url_for("donki_cmes") }}?start=${encodeURIComponent(start)}&duration=${encodeURIComponent(duration)}&solver=${encodeURIComponent(document.querySelector('[name="solver"]').value)}`
         );
         if (!response.ok) throw new Error(await response.text());
         const loaded = await response.json();

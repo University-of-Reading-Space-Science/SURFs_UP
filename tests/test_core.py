@@ -229,7 +229,9 @@ def test_generated_code_fetches_donki_at_runtime_when_requested():
     code = build_generated_code(simulation)
 
     compile(code, "<generated>", "exec")
-    assert "sin.get_DONKI_cme_list(model, start_time, donki_end_time)" in code
+    assert "donki_cmes = sin.get_DONKI_cme_list(model, start_time, donki_end_time)" in code
+    assert "if solver == 'hydro':" in code
+    assert "donki_cme.profile_type = 'sinusoidal'" in code
     assert "downloaded-at-run" not in code
     assert code.count("s.ConeCME") == 1
 

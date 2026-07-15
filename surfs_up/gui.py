@@ -56,6 +56,7 @@ from sunpy.coordinates import sun
 
 import surf.surf_analysis as sa
 import surf.surf_inputs as sin
+import surf.surf as s
 from surfs_up.core import (
     SimulationRequest,
     build_generated_code,
@@ -1792,13 +1793,18 @@ class CmeTab(QWidget):
         self.cme_density_spin.setRange(0.0, 1.0e6)
         self.cme_density_spin.setDecimals(3)
         self.cme_density_spin.setSingleStep(1.0)
-        self.cme_density_spin.setValue(100.0)
+        surf_defaults = s.surf_constants()
+        self.cme_density_spin.setValue(
+            surf_defaults["n_sw_21p5"].to_value(u.cm ** -3)
+        )
         self.cme_density_spin.setSuffix(" p+/cm^3")
 
         self.cme_temperature_spin = QDoubleSpinBox()
         self.cme_temperature_spin.setRange(1.0, 1.0e8)
         self.cme_temperature_spin.setSingleStep(1000.0)
-        self.cme_temperature_spin.setValue(1.0e5)
+        self.cme_temperature_spin.setValue(
+            surf_defaults["T_sw_21p5"].to_value(u.K)
+        )
         self.cme_temperature_spin.setSuffix(" K")
 
         self.add_cme_button = QPushButton("Add CME")
@@ -1923,6 +1929,18 @@ class CmeTab(QWidget):
     def _open_manual_cme_dialog(self):
         """Open the manual cone-CME editor as a temporary modal dialog."""
         self._sync_launch_datetime_from_day()
+        self.profile_type_combo.setCurrentText(
+            "sinusoidal" if self.current_solver == "hydro" else "square"
+        )
+        self.density_fraction_spin.setValue(1.0)
+        self.temperature_fraction_spin.setValue(1.0)
+        surf_defaults = s.surf_constants()
+        self.cme_density_spin.setValue(
+            surf_defaults["n_sw_21p5"].to_value(u.cm ** -3)
+        )
+        self.cme_temperature_spin.setValue(
+            surf_defaults["T_sw_21p5"].to_value(u.K)
+        )
         self.manual_cme_dialog.exec()
 
     def set_solver(self, solver_name: str):
@@ -2034,7 +2052,9 @@ class CmeTab(QWidget):
                         "cme_expansion": False,
                         "cme_fixed_duration": True,
                         "fixed_duration_hr": 12.0,
-                        "profile_type": "square",
+                        "profile_type": (
+                            "sinusoidal" if self.current_solver == "hydro" else "square"
+                        ),
                         "plasma_mode": "Fraction of ambient",
                         "density_fraction": 1.0,
                         "temperature_fraction": 1.0,

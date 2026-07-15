@@ -153,6 +153,7 @@ def _model_defaults() -> dict[str, object]:
     """Return the same time-dependent defaults initialized by the Qt model tab."""
     import astropy.units as u
     import surf.surf_inputs as sin
+    import surf.surf as s
 
     today = datetime.datetime.now(datetime.UTC).replace(tzinfo=None, microsecond=0)
     now = (
@@ -160,6 +161,7 @@ def _model_defaults() -> dict[str, object]:
     ).replace(tzinfo=None, microsecond=0)
     cr_num, cr_lon = sin.datetime2surfinputs(now)
     earth_latitude = sin.get_earth_lat(now)
+    surf_defaults = s.surf_constants()
     return {
         "default_start": now.strftime("%Y-%m-%dT%H:%M:%S"),
         "default_iswa_map_datetime": (now + datetime.timedelta(days=5)).strftime(
@@ -172,6 +174,10 @@ def _model_defaults() -> dict[str, object]:
             if hasattr(earth_latitude, "to_value")
             else float(earth_latitude)
         ),
+        "default_cme_density_pcc": surf_defaults["n_sw_21p5"].to_value(
+            u.cm ** -3
+        ),
+        "default_cme_temperature_k": surf_defaults["T_sw_21p5"].to_value(u.K),
     }
 
 
@@ -189,7 +195,7 @@ def _save_uploaded_file(uploaded) -> Path:
 
 
 def _fetch_donki_cmes(
-    start: datetime.datetime, duration_days: float
+    start: datetime.datetime, duration_days: float, solver: str = "huxt"
 ) -> list[dict[str, object]]:
     """Download and normalize DONKI cone CMEs for a model run interval."""
     end = start + datetime.timedelta(days=duration_days)
@@ -231,7 +237,9 @@ def _fetch_donki_cmes(
                 "cme_expansion": False,
                 "cme_fixed_duration": True,
                 "fixed_duration_hr": 12,
-                "profile_type": "square",
+                "profile_type": (
+                    "sinusoidal" if str(solver).strip().lower() == "hydro" else "square"
+                ),
                 "plasma_mode": "Fraction of ambient",
                 "density_fraction": 1,
                 "temperature_fraction": 1,
@@ -764,7 +772,11 @@ def _request_from_form() -> SimulationRequest:
         model_start = datetime.datetime.fromisoformat(start.replace("T", " "))
         cmes = [cme for cme in cmes if cme.get("source") != "donki"]
         cmes.extend(
-            _fetch_donki_cmes(model_start, _float("simtime_days", 10.0))
+            _fetch_donki_cmes(
+                model_start,
+                _float("simtime_days", 10.0),
+                request.form.get("solver", "huxt"),
+            )
         )
     cone_file = request.files.get("cone_file")
     if cone_file and cone_file.filename:
@@ -900,6 +912,7 @@ def create_app(config: dict | None = None) -> Flask:
             "error": None,
             "result": None,
             "run_id": None,
+            "show_movies": False,
             "show_code_dialog": False,
             "submitted_cmes": None,
         }
@@ -922,6 +935,9 @@ def create_app(config: dict | None = None) -> Flask:
                     if context["result"].success and context["result"].model is not None:
                         context["run_id"] = _retain_model(
                             context["result"].model, simulation
+                        )
+                        context["show_movies"] = not bool(
+                            simulation.model.get("is_1d", False)
                         )
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 context["error"] = str(exc)
@@ -1071,7 +1087,9 @@ def create_app(config: dict | None = None) -> Flask:
     def donki_cmes():
         start = datetime.datetime.fromisoformat(request.args["start"].replace("T", " "))
         duration = float(request.args.get("duration", 10))
-        return jsonify(_fetch_donki_cmes(start, duration))
+        return jsonify(
+            _fetch_donki_cmes(start, duration, request.args.get("solver", "huxt"))
+        )
 
     @app.get("/runs/<run_id>/timeseries.csv")
     def timeseries_csv(run_id: str):

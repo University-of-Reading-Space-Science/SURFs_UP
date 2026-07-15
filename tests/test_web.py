@@ -338,6 +338,19 @@ def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
     ]
 
 
+def test_movies_tab_is_disabled_for_completed_1d_runs():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    app_source = Path("surfs_up/web/app.py").read_text(encoding="utf-8")
+
+    assert "{% if show_movies %}" in template
+    assert 'data-tab="movies"' in template
+    assert 'data-panel="movies"' in template
+    assert '{% if not show_movies %}disabled aria-disabled="true"' in template
+    assert "Movies are unavailable for 1D runs" in template
+    assert 'context["show_movies"] = not bool(' in app_source
+    assert 'simulation.model.get("is_1d", False)' in app_source
+
+
 def test_generated_code_dialog_has_copy_button():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
 
@@ -461,6 +474,30 @@ def test_donki_preview_matches_surf_query_and_cone_defaults(monkeypatch):
     assert cmes[1]["cme_fixed_duration"] is True
     assert cmes[1]["fixed_duration_hr"] == 12
     assert cmes[1]["profile_type"] == "square"
+
+    hydro_cmes = web_app._fetch_donki_cmes(
+        datetime.datetime(2026, 7, 3, 12), 1, "hydro"
+    )
+    assert all(cme["profile_type"] == "sinusoidal" for cme in hydro_cmes)
+
+
+def test_hydro_manual_cme_defaults_to_sinusoidal_with_unit_plasma_fractions():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'id="cme-density-fraction" type="number" value="1"' in template
+    assert 'id="cme-temperature-fraction" type="number" value="1"' in template
+    assert "document.querySelector('[name=\"solver\"]').value === \"hydro\"" in template
+    assert '? "sinusoidal"' in template
+
+
+def test_manual_cme_absolute_defaults_come_from_surf_constants():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    app_source = Path("surfs_up/web/app.py").read_text(encoding="utf-8")
+
+    assert 'value="{{ default_cme_density_pcc }}"' in template
+    assert 'value="{{ default_cme_temperature_k }}"' in template
+    assert 'surf_defaults["n_sw_21p5"]' in app_source
+    assert 'surf_defaults["T_sw_21p5"]' in app_source
 
 
 def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
