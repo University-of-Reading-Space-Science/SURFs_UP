@@ -10,6 +10,7 @@ import json
 import math
 import os
 import pickle
+import secrets
 import tempfile
 import threading
 import time
@@ -19,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file, session
 
 from surfs_up.core import (
     SimulationRequest,
@@ -37,6 +38,7 @@ _RUNS_LOCK = threading.Lock()
 _RUN_PROGRESS: OrderedDict[str, str] = OrderedDict()
 _RUN_PROGRESS_LOCK = threading.Lock()
 _PLOT_LOCK = threading.Lock()
+_SURF_RUN_LOCK = threading.Lock()
 _MAX_RETAINED_RUNS = 8
 _RUN_CACHE_DIR = Path(
     os.environ.get("SURFS_UP_RUN_CACHE_DIR", Path.home() / ".cache" / "surfs_up" / "runs")
@@ -44,9 +46,43 @@ _RUN_CACHE_DIR = Path(
 _DONKI_URL = "https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/CMEAnalysis"
 
 
+def _secret_key() -> str:
+    """Return a stable signing key, preferring an explicit deployment secret."""
+    configured = os.environ.get("SURFS_UP_SECRET_KEY")
+    if configured:
+        return configured
+    path = Path.home() / ".cache" / "surfs_up" / "flask-secret-key"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+        generated = secrets.token_urlsafe(48)
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write(generated)
+            return generated
+        except FileExistsError:
+            return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return secrets.token_urlsafe(48)
+
+
+def _session_id() -> str:
+    """Return the signed-cookie-backed identifier for the current browser session."""
+    identifier = session.get("surf_session_id")
+    if not identifier:
+        identifier = uuid.uuid4().hex
+        session["surf_session_id"] = identifier
+    return str(identifier)
+
+
 def _retain_model(model: object, simulation: SimulationRequest) -> str:
     run_id = uuid.uuid4().hex
-    retained = {"model": model, "simulation": simulation}
+    retained = {
+        "model": model,
+        "simulation": simulation,
+        "owner_session_id": _session_id(),
+    }
     with _RUNS_LOCK:
         _RUNS[run_id] = retained
         while len(_RUNS) > _MAX_RETAINED_RUNS:
@@ -62,13 +98,13 @@ def _run_for(run_id: str) -> dict[str, object]:
         retained = _read_run_cache(run_id)
     if retained is None:
         abort(404, "Run not found or no longer retained.")
+    if not isinstance(retained, dict) or retained.get("owner_session_id") != _session_id():
+        abort(404, "Run not found or no longer retained.")
     with _RUNS_LOCK:
         _RUNS[run_id] = retained
         while len(_RUNS) > _MAX_RETAINED_RUNS:
             _RUNS.popitem(last=False)
-    if isinstance(retained, dict):
-        return retained
-    return {"model": retained, "simulation": None}
+    return retained
 
 
 def _model_for(run_id: str) -> object:
@@ -143,8 +179,9 @@ def _set_run_progress(progress_id: str, message: str) -> None:
     """Store a short-lived status message for a run being processed."""
     if not progress_id:
         return
+    progress_key = f"{_session_id()}:{progress_id}"
     with _RUN_PROGRESS_LOCK:
-        _RUN_PROGRESS[progress_id] = message
+        _RUN_PROGRESS[progress_key] = message
         while len(_RUN_PROGRESS) > 16:
             _RUN_PROGRESS.popitem(last=False)
 
@@ -187,9 +224,12 @@ def _float(name: str, default: float) -> float:
 
 
 def _save_uploaded_file(uploaded) -> Path:
-    upload_dir = Path(tempfile.gettempdir()) / "surfs_up_uploads"
+    upload_dir = (
+        Path(tempfile.gettempdir()) / "surfs_up_uploads" / _session_id()
+    )
     upload_dir.mkdir(parents=True, exist_ok=True)
-    path = upload_dir / Path(uploaded.filename).name
+    suffix = Path(uploaded.filename).suffix
+    path = upload_dir / f"{uuid.uuid4().hex}{suffix}"
     uploaded.save(path)
     return path
 
@@ -784,10 +824,7 @@ def _request_from_form() -> SimulationRequest:
         import surf.surf_inputs as sin
         from astropy.time import Time
 
-        upload_dir = Path(tempfile.gettempdir()) / "surfs_up_uploads"
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        cone_path = upload_dir / Path(cone_file.filename).name
-        cone_file.save(cone_path)
+        cone_path = _save_uploaded_file(cone_file)
         model_start = datetime.datetime.fromisoformat(start.replace("T", " "))
         for cone in sin.import_cone2bc_parameters(str(cone_path)).values():
             launch = Time(cone["ldates"]).to_datetime().replace(tzinfo=None)
@@ -843,9 +880,19 @@ def _request_from_form() -> SimulationRequest:
 def create_app(config: dict | None = None) -> Flask:
     """Create an app suitable for local use or a PythonAnywhere WSGI file."""
     app = Flask(__name__)
-    app.config.from_mapping(MAX_CONTENT_LENGTH=1_000_000)
+    app.config.from_mapping(
+        MAX_CONTENT_LENGTH=1_000_000,
+        SECRET_KEY=_secret_key(),
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+    )
     if config:
         app.config.update(config)
+
+    @app.before_request
+    def establish_browser_session():
+        """Ensure every visitor receives an isolated signed session identifier."""
+        _session_id()
 
     @app.get("/model-coordinates")
     def model_coordinates():
@@ -926,12 +973,13 @@ def create_app(config: dict | None = None) -> Flask:
                     context["submitted_cmes"] = _json_safe(simulation.cmes)
                     progress_id = request.form.get("progress_id", "")
                     _set_run_progress(progress_id, "Grabbing and processing input data")
-                    context["result"] = run_generated_code(
-                        context["code"],
-                        before_solve=lambda: _set_run_progress(
-                            progress_id, "Running SURF"
-                        ),
-                    )
+                    with _SURF_RUN_LOCK:
+                        context["result"] = run_generated_code(
+                            context["code"],
+                            before_solve=lambda: _set_run_progress(
+                                progress_id, "Running SURF"
+                            ),
+                        )
                     if context["result"].success and context["result"].model is not None:
                         context["run_id"] = _retain_model(
                             context["result"].model, simulation
@@ -946,8 +994,9 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/run-progress/<progress_id>")
     def run_progress(progress_id: str):
         """Return the latest processing phase for an in-flight run."""
+        progress_key = f"{_session_id()}:{progress_id}"
         with _RUN_PROGRESS_LOCK:
-            message = _RUN_PROGRESS.get(progress_id, "")
+            message = _RUN_PROGRESS.get(progress_key, "")
         return jsonify({"message": message})
 
     @app.get("/runs/<run_id>/plot/<kind>.png")

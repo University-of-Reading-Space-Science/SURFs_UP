@@ -571,14 +571,12 @@
               <label>Frame rate (fps)<input id="movie-fps" type="number" min="1" max="60" value="5"></label>
             </div>
             <div class="flex flex-wrap items-center gap-4">
-              <label><span><input id="movie-hcs" type="checkbox" checked> Plot HCS</span></label>
-              <label><span><input id="movie-earth" type="checkbox"> Trace Earth connection (slow)</span></label>
+              <label id="movie-hcs-label" class="opacity-50"><span><input id="movie-hcs" type="checkbox" checked disabled> Plot HCS</span></label>
               <label><span><input id="movie-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
               <input class="max-w-40" aria-label="Movie outer radius in solar radii" id="movie-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
             </div>
             <input id="movie-output" type="hidden">
-            <label><span><input id="movie-play" type="checkbox" checked> Play movie when complete</span></label>
             <div><button type="button" onclick="downloadMovie('map', this)">Create 2D Movie</button></div>
           </div>
         </section>
@@ -591,7 +589,7 @@
               <label>Frame rate (fps)<input id="movie-ts-fps" type="number" min="1" max="60" value="5"></label>
             </div>
             <div class="flex flex-wrap items-center gap-4">
-              <label><span><input id="movie-ts-hcs" type="checkbox" checked> Plot HCS</span></label>
+              <label id="movie-ts-hcs-label" class="opacity-50"><span><input id="movie-ts-hcs" type="checkbox" checked disabled> Plot HCS</span></label>
               <label><span><input id="movie-ts-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
               <input class="max-w-40" aria-label="Time-series movie outer radius in solar radii" id="movie-ts-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
@@ -612,25 +610,11 @@
 
     <section class="card tab-panel" data-panel="outputs" role="tabpanel">
       <section class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4" id="plot-output">
-        <h3 class="font-semibold text-slate-900">Figure output</h3>
-        <p class="mt-2 text-sm font-medium text-surf-600" id="ambient-product-status">Choose an ambient source and click Plot.</p>
-        <p class="mt-2 text-sm font-medium text-surf-600" id="product-status">Choose a plot above to render it here.</p>
+        <h3 class="font-semibold text-slate-900">Plots and movies appear here</h3>
+        <p class="hidden" id="ambient-product-status"></p>
+        <p class="hidden" id="product-status"></p>
+        <p class="hidden" id="movie-status"></p>
         <div class="mt-4 space-y-4" id="plot-history"></div>
-      </section>
-      <section class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <h3 class="font-semibold text-slate-900">Visualisations</h3>
-        <p class="mt-2 text-sm text-slate-500" id="movie-status">All plots and movies will appear here.</p>
-        <div class="mt-4 hidden" id="movie-output-panel">
-          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <a id="download-rendered-movie"
-               class="cursor-pointer rounded-lg bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
-              Download Movie
-            </a>
-          </div>
-          <img id="movie-player"
-               class="mx-auto max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-white"
-               alt="Rendered SURF movie">
-        </div>
       </section>
     </section>
 
@@ -749,14 +733,11 @@
         const withTimeseries = kind === "timeseries";
         const prefix = withTimeseries ? "movie-ts" : "movie";
         const tag = document.getElementById(`${prefix}-tag`).value || "gui";
-        const playOnComplete = withTimeseries ||
-          document.getElementById("movie-play").checked;
         const movieQuery = new URLSearchParams({
           tag,
           duration: document.getElementById(`${prefix}-duration`).value,
           fps: document.getElementById(`${prefix}-fps`).value,
           plot_hcs: document.getElementById(`${prefix}-hcs`).checked ? "1" : "0",
-          trace_earth: !withTimeseries && document.getElementById("movie-earth").checked ? "1" : "0",
           plot_rmax: document.getElementById(`${prefix}-limit-rmax`).checked
             ? document.getElementById(`${prefix}-rmax`).value : "",
           field: document.getElementById("movie-ts-field").value,
@@ -768,24 +749,23 @@
         movieStatus.textContent =
           "Rendering movie frames. This may take several minutes; please wait...";
         const movieUrl = `${runBase}/movie/${kind}.gif?${movieQuery}`;
+        document.getElementById("plot-output").classList.remove("hidden");
         fetch(movieUrl)
           .then(async response => {
             if (!response.ok) throw new Error(await response.text());
             return response.blob();
           })
-          .then(blob => {
-            const objectUrl = URL.createObjectURL(blob);
-            const player = document.getElementById("movie-player");
-            const outputPanel = document.getElementById("movie-output-panel");
-            const downloadLink = document.getElementById("download-rendered-movie");
-            if (player.dataset.objectUrl) URL.revokeObjectURL(player.dataset.objectUrl);
-            player.dataset.objectUrl = objectUrl;
-            player.src = objectUrl;
-            player.style.display = playOnComplete ? "block" : "none";
-            downloadLink.href = objectUrl;
-            downloadLink.download = `SURF_${tag}_movie.gif`;
-            outputPanel.classList.remove("hidden");
-            movieStatus.textContent = "Movie rendering complete.";
+          .then(async blob => {
+            const timestamp = new Date();
+            const entry = {
+              caption: `${withTimeseries ? "Time-series" : "2D"} movie generated ${timestamp.toLocaleTimeString()}`,
+              alt: `${withTimeseries ? "Time-series" : "2D"} SURF movie`,
+              filename: `SURF_${tag}_movie.gif`,
+              src: await blobToDataUrl(blob)
+            };
+            addPlotOutput(entry);
+            saveFigureOutput(entry);
+            movieStatus.textContent = "";
             markOutputsTabHasNewContent();
             finishTask(button, "Movie Ready");
           })
@@ -793,20 +773,6 @@
             movieStatus.textContent = `Movie generation failed: ${error.message}`;
             failTask(button);
           });
-        return;
-        const query = new URLSearchParams({
-          tag: document.getElementById("movie-tag").value,
-          duration: document.getElementById("movie-duration").value,
-          fps: document.getElementById("movie-fps").value,
-          plot_hcs: document.getElementById("movie-hcs").checked ? "1" : "0",
-          trace_earth: document.getElementById("movie-earth").checked ? "1" : "0",
-          plot_rmax: document.getElementById("movie-limit-rmax").checked
-            ? document.getElementById("movie-rmax").value : "",
-          field: document.getElementById("movie-ts-field").value
-        });
-        document.getElementById("product-status").textContent =
-          "Generating movie; the download will begin when rendering finishes…";
-        window.location.href = `${runBase}/movie/${kind}.gif?${query}`;
       }
     </script>
   {% endif %}
@@ -874,6 +840,7 @@
       downloadLink.textContent = "Download";
       const image = document.createElement("img");
       image.className = "w-full rounded-lg border border-slate-200 bg-white";
+      if (entry.showMedia === false) image.classList.add("hidden");
       image.alt = entry.alt;
       image.src = entry.src;
       header.append(caption, downloadLink);
@@ -1163,7 +1130,7 @@
       const status = document.getElementById("ambient-product-status");
       const history = document.getElementById("plot-history");
       if (status && (!history || !history.children.length)) {
-        status.textContent = "Choose an ambient source and click Plot.";
+        status.textContent = "";
       }
     }
 
@@ -2134,11 +2101,24 @@
 
     const oneDimensionalToggle = document.querySelector('[name="is_1d"]');
     const solverSelect = document.querySelector('[name="solver"]');
+    const includeBpolToggle = document.querySelector('[name="include_bpol"]');
     const modelGammaRow = document.getElementById("model-gamma-row");
     const modelGammaInput = document.getElementById("model-gamma");
     const frameSelect = document.querySelector('[name="frame"]');
     const streakToggle = document.querySelector('[name="streak_lines_enabled"]');
     const streakSpacing = document.querySelector('[name="streak_spacing_deg"]');
+    function syncMovieHcsControls(defaultToChecked = false) {
+      const available = Boolean(includeBpolToggle && includeBpolToggle.checked);
+      ["movie-hcs", "movie-ts-hcs"].forEach(id => {
+        const checkbox = document.getElementById(id);
+        const label = document.getElementById(`${id}-label`);
+        if (!checkbox) return;
+        checkbox.disabled = !available;
+        if (!available) checkbox.checked = false;
+        else if (defaultToChecked) checkbox.checked = true;
+        if (label) label.classList.toggle("opacity-50", !available);
+      });
+    }
     function syncModelDependentControls() {
       const mapControls = document.getElementById("map-controls");
       if (mapControls) mapControls.disabled = oneDimensionalToggle.checked;
@@ -2161,9 +2141,15 @@
         });
         if (solverSelect.value === "huxt") fieldSelect.value = "V";
       }
+      syncMovieHcsControls();
     }
     oneDimensionalToggle.addEventListener("change", syncModelDependentControls);
     solverSelect.addEventListener("change", syncModelDependentControls);
+    if (includeBpolToggle) {
+      includeBpolToggle.addEventListener("change", () => {
+        syncMovieHcsControls(includeBpolToggle.checked);
+      });
+    }
     streakToggle.addEventListener("change", syncModelDependentControls);
     syncModelDependentControls();
   </script>

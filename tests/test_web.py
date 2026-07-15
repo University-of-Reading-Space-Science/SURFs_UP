@@ -10,8 +10,39 @@ from types import SimpleNamespace
 import astropy.units as u
 import numpy as np
 import pytest
+from flask import session
+from werkzeug.exceptions import NotFound
 
 from surfs_up.web import create_app
+
+
+def test_browser_sessions_isolate_uploads_runs_and_progress():
+    import surfs_up.web.app as web_app
+
+    app = create_app({"TESTING": True, "SECRET_KEY": "test-session-secret"})
+    run_id = "isolatedrun"
+
+    with app.test_request_context("/"):
+        session["surf_session_id"] = "user-a"
+        web_app._RUNS[run_id] = {
+            "model": object(),
+            "simulation": None,
+            "owner_session_id": "user-a",
+        }
+        web_app._set_run_progress("progress", "Running A")
+        assert web_app._run_for(run_id)["owner_session_id"] == "user-a"
+
+    with app.test_request_context("/"):
+        session["surf_session_id"] = "user-b"
+        with pytest.raises(NotFound):
+            web_app._run_for(run_id)
+        assert web_app._RUN_PROGRESS.get("user-b:progress", "") == ""
+
+    app_source = Path("surfs_up/web/app.py").read_text(encoding="utf-8")
+    assert 'Path(tempfile.gettempdir()) / "surfs_up_uploads" / _session_id()' in app_source
+    assert 'path = upload_dir / f"{uuid.uuid4().hex}{suffix}"' in app_source
+    web_app._RUNS.pop(run_id, None)
+    web_app._RUN_PROGRESS.pop("user-a:progress", None)
 
 
 def test_preview_uses_shared_generator():
@@ -318,8 +349,12 @@ def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
     ]
     assert 'id="plot-output"' in template[
         template.index('data-panel="outputs"'):]
-    assert 'id="movie-output-panel"' in template[
-        template.index('data-panel="outputs"'):]
+    assert ">Plots and movies appear here</h3>" in template
+    assert "Choose an ambient source and click Plot." not in template
+    assert "Choose a plot above to render it here." not in template
+    assert "Movie rendering complete; newest output is shown first." not in template
+    assert 'id="movie-output-panel"' not in template
+    assert 'id="movie-player"' not in template
     assert "has-new-output" in template
     assert "function markOutputsTabHasNewContent()" in template
     assert 'if (name === "outputs") button.classList.remove("has-new-output")' in template
@@ -333,6 +368,9 @@ def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
     assert "downloadLink.download = entry.filename || \"SURF_plot.png\";" in template
     assert "downloadLink.textContent = \"Download\";" in template
     assert "filename: `SURF_${kind}_plot_${timestamp.toISOString().replace(/[:.]/g, \"-\")}.png`" in template
+    assert 'filename: `SURF_${tag}_movie.gif`' in template
+    assert "addPlotOutput(entry);" in template
+    assert "saveFigureOutput(entry);" in template
     assert "URL.createObjectURL(blob)" not in template[
         template.index("function showPlot("):template.index("function downloadTimeseries(")
     ]
@@ -349,6 +387,22 @@ def test_movies_tab_is_disabled_for_completed_1d_runs():
     assert "Movies are unavailable for 1D runs" in template
     assert 'context["show_movies"] = not bool(' in app_source
     assert 'simulation.model.get("is_1d", False)' in app_source
+
+
+def test_movie_controls_follow_magnetic_boundary_availability():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    movies = template[
+        template.index('data-panel="movies"'):template.index('data-panel="outputs"')
+    ]
+
+    assert 'id="movie-play"' not in movies
+    assert 'id="movie-earth"' not in movies
+    assert "Trace Earth connection (slow)" not in movies
+    assert 'id="movie-hcs" type="checkbox" checked disabled' in template
+    assert 'id="movie-ts-hcs" type="checkbox" checked disabled' in template
+    assert "function syncMovieHcsControls(defaultToChecked = false)" in template
+    assert "checkbox.disabled = !available" in template
+    assert "if (!available) checkbox.checked = false" in template
 
 
 def test_generated_code_dialog_has_copy_button():
