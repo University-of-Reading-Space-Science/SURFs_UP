@@ -301,8 +301,8 @@
       <legend class="group-title px-1">WSA map from ISWA</legend>
       <div class="control-row">
         <div class="datetime-sync-row">
-          <label>Map date/time<input name="iswa_map_date" id="iswa-map-date" type="datetime-local" step="1" value="{{ default_start }}"></label>
-          <label class="sync-checkbox"><span><input name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked> Use model start time</span></label>
+          <label>Map date/time<input name="iswa_map_date" id="iswa-map-date" type="datetime-local" step="1" value="{{ default_iswa_map_datetime }}"></label>
+          <label class="sync-checkbox"><span><input name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked> Use model start time + 5 days</span></label>
         </div>
         <p class="wide text-slate-600">Downloads the newest available WSA map at or before the selected map date/time.</p>
         <label><span><input name="iswa_decelerate" type="checkbox" checked> Decelerate to inner boundary</span></label>
@@ -322,10 +322,11 @@
             </span>
           </label>
           <div class="control-row">
-            <label>Mode <select name="insitu_mode">
+            <label>Mode <select name="insitu_mode" id="insitu-mode">
               <option value="forecast">Forecast</option>
               <option value="reconstruction">Reconstruction (requires 27 days of data after run end time)</option>
             </select></label>
+            <label>Forecast time<input name="omni_forecast_datetime" id="omni-forecast-datetime" type="datetime-local" step="1"></label>
           </div>
         </section>
         <section class="rounded-xl border border-slate-200 bg-white p-4">
@@ -480,11 +481,11 @@
       {% if run_id %}
       <form class="form-grid wide" id="plots-form" onsubmit="return false">
         <div class="inner-tabs" data-inner-tabs="plot-products">
-          <button type="button" class="inner-tab-button active" data-inner-tab="map-product">2D Map</button>
+          <button type="button" class="inner-tab-button" data-inner-tab="map-product">2D Map</button>
           <button type="button" class="inner-tab-button" data-inner-tab="radial-product">Radial Profile</button>
-          <button type="button" class="inner-tab-button" data-inner-tab="timeseries-product">Time Series</button>
+          <button type="button" class="inner-tab-button active" data-inner-tab="timeseries-product">Time Series</button>
         </div>
-        <section class="product-panel active wide" id="map-controls" data-inner-panel="map-product">
+        <section class="product-panel wide" id="map-controls" data-inner-panel="map-product">
           <h3 class="sr-only">2D Map (sa.plot)</h3>
           <div class="grid max-w-2xl gap-3">
             <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Time (days)
@@ -514,16 +515,20 @@
             <div><button type="button" onclick="showPlot('radial', this)">Plot Radial Profile</button></div>
           </div>
         </section>
-        <section class="product-panel wide" data-inner-panel="timeseries-product">
+        <section class="product-panel active wide" data-inner-panel="timeseries-product">
           <h3 class="sr-only">Time Series (sa.plot_timeseries)</h3>
           <div class="grid max-w-3xl gap-3">
-            <label class="grid items-center gap-3 sm:grid-cols-[10rem_1fr]">Location <select id="timeseries-observer">
-              {% for value, label in [("Earth","Earth"),("Mercury","Mercury"),("Venus","Venus"),
-                ("Mars","Mars"),("Jupiter","Jupiter"),("Saturn","Saturn"),("ACE","ACE"),
-                ("PSP","Parker Solar Probe"),("SOLO","Solar Orbiter"),("STA","STEREO-A"),
-                ("STB","STEREO-B"),("ULYSSES","Ulysses"),("custom","Custom coordinates")] %}
-              <option value="{{ value }}">{{ label }}</option>{% endfor %}
-            </select></label>
+            <div class="grid items-center gap-3 sm:grid-cols-[10rem_1fr_auto]">
+              <label for="timeseries-observer" class="text-sm font-medium text-slate-700">Location</label>
+              <select id="timeseries-observer">
+                {% for value, label in [("Earth","Earth"),("Mercury","Mercury"),("Venus","Venus"),
+                  ("Mars","Mars"),("Jupiter","Jupiter"),("Saturn","Saturn"),("ACE","ACE"),
+                  ("PSP","Parker Solar Probe"),("SOLO","Solar Orbiter"),("STA","STEREO-A"),
+                  ("STB","STEREO-B"),("ULYSSES","Ulysses"),("custom","Custom coordinates")] %}
+                <option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+              <label id="timeseries-omni-option"><span><input id="timeseries-plot-omni" type="checkbox" checked> Plot OMNI</span></label>
+            </div>
             <p class="text-sm text-slate-500">Standard locations follow each observer's ephemeris throughout the run. Custom longitude is fixed on the SURF model grid: HEEQ/model longitude at run start for sidereal runs, or corotating model longitude for synodic runs.</p>
             <div class="hidden grid-cols-1 items-end gap-3 sm:grid-cols-[10rem_1fr_1fr]" id="timeseries-custom-coordinates">
               <span class="pb-2 text-sm font-medium text-slate-700">Custom coordinates</span>
@@ -640,6 +645,7 @@
           radial_lon: document.getElementById("radial-lon").value,
           timeseries_lon: document.getElementById("timeseries-lon").value,
           observer: document.getElementById("timeseries-observer").value,
+          plot_omni: document.getElementById("timeseries-plot-omni").checked ? "1" : "0",
           radius: document.getElementById("plot-radius").value,
           minimal: document.getElementById("map-minimal").checked ? "1" : "0",
           plot_hcs: document.getElementById("map-hcs").checked ? "1" : "0",
@@ -1093,6 +1099,26 @@
       }
       if (kind === "timeseries") {
         const observer = document.getElementById("timeseries-observer").value;
+        if (observer === "Earth") {
+          const plotOmni = document.getElementById("timeseries-plot-omni").checked;
+          const lines = [
+            "# Plot the SURF Earth time series, optionally overlaid with OMNI observations."
+          ];
+          if (plotOmni) {
+            lines.push(
+              "try:",
+              "    sa.plot_earth_timeseries(model, plot_omni=True)",
+              "except Exception:",
+              "    # OMNI may be unavailable for the requested dates.",
+              "    plt.close('all')",
+              "    sa.plot_earth_timeseries(model, plot_omni=False)",
+            );
+          } else {
+            lines.push("sa.plot_earth_timeseries(model, plot_omni=False)");
+          }
+          lines.push("plt.show()");
+          return lines.join("\n");
+        }
         if (observer === "custom") {
           const radius = document.getElementById("plot-radius").value;
           const lon = document.getElementById("timeseries-lon").value;
@@ -1621,6 +1647,11 @@
     function invalidateCompletedRun() {
       if (!runIsCurrent) return;
       runIsCurrent = false;
+      if (grabDonkiAtRunStart.checked && cmes.length) {
+        cmes.splice(0, cmes.length);
+        selectedCmeIndex = -1;
+        renderCmes();
+      }
       hidePostRunTabs();
       resetGeneratedCodeForCurrentState();
       const runButton = document.getElementById("run-surf-button");
@@ -1756,6 +1787,8 @@
     });
 
     const modelStartInput = document.getElementById("model-start-datetime");
+    const omniForecastDatetime = document.getElementById("omni-forecast-datetime");
+    const insituMode = document.getElementById("insitu-mode");
     const modelCrNumber = document.getElementById("model-cr-number");
     const modelCrLongitude = document.getElementById("model-cr-longitude");
     const modelLatitude = document.getElementById("model-latitude");
@@ -1784,12 +1817,25 @@
     }
     function syncIswaMapDateFromModelStart() {
       if (!iswaMapDate || !iswaUseModelStart || !iswaUseModelStart.checked) return;
-      iswaMapDate.value = modelStartInput.value;
+      const mapDate = utcInputDate(modelStartInput);
+      mapDate.setUTCDate(mapDate.getUTCDate() + 5);
+      iswaMapDate.value = mapDate.toISOString().slice(0, 19);
+    }
+    function syncOmniForecastTime() {
+      if (!omniForecastDatetime || !modelStartInput.value) return;
+      const forecast = utcInputDate(modelStartInput);
+      forecast.setUTCDate(forecast.getUTCDate() + 5);
+      omniForecastDatetime.value = forecast.toISOString().slice(0, 19);
+    }
+    function syncOmniForecastTimeState() {
+      if (!omniForecastDatetime || !insituMode) return;
+      omniForecastDatetime.disabled = insituMode.value !== "forecast";
     }
     function syncIswaMapDateState() {
       if (!iswaMapDate || !iswaUseModelStart) return;
       iswaMapDate.disabled = iswaUseModelStart.checked;
       syncIswaMapDateFromModelStart();
+      syncOmniForecastTime();
     }
     function syncLongitudeControls() {
       const disabled = Boolean(modelIs1D && modelIs1D.checked);
@@ -1811,6 +1857,7 @@
       modelLatitude.value = coordinates.earth_latitude.toFixed(2);
       syncCmeDatetimeFromDay();
       syncIswaMapDateFromModelStart();
+      syncOmniForecastTime();
       clearStaleDonkiCmes();
     }
     function clearStaleDonkiCmes() {
@@ -1824,8 +1871,15 @@
     }
     modelStartInput.addEventListener("change", () => {
       syncIswaMapDateFromModelStart();
+      syncOmniForecastTime();
       updateCoordinates({datetime: modelStartInput.value}).catch(console.error);
     });
+    modelStartInput.addEventListener("input", syncOmniForecastTime);
+    syncOmniForecastTime();
+    if (insituMode) {
+      insituMode.addEventListener("change", syncOmniForecastTimeState);
+      syncOmniForecastTimeState();
+    }
     if (iswaUseModelStart) {
       iswaUseModelStart.addEventListener("change", syncIswaMapDateState);
       syncIswaMapDateState();
@@ -1964,9 +2018,12 @@
     });
 
     const timeseriesObserver = document.getElementById("timeseries-observer");
+    const timeseriesOmniOption = document.getElementById("timeseries-omni-option");
     const customTimeseriesCoordinates = document.getElementById("timeseries-custom-coordinates");
     function syncTimeseriesLocation() {
       const custom = timeseriesObserver && timeseriesObserver.value === "custom";
+      const earth = timeseriesObserver && timeseriesObserver.value === "Earth";
+      if (timeseriesOmniOption) timeseriesOmniOption.classList.toggle("hidden", !earth);
       if (customTimeseriesCoordinates) {
         customTimeseriesCoordinates.classList.toggle("hidden", !custom);
         customTimeseriesCoordinates.classList.toggle("grid", custom);

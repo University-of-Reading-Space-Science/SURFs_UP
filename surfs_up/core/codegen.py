@@ -207,11 +207,18 @@ def build_generated_code(request: SimulationRequest) -> str:
                 if ambient.get("mode") == "reconstruction"
                 else "omniSURF_forecast"
             )
-            second = (
-                "start_time + datetime.timedelta(days=simtime.to_value(u.day))"
-                if fn.endswith("reconstruction")
-                else "simtime=simtime"
+            forecast_datetime = ambient.get("forecast_datetime")
+            forecast_time = (
+                f"datetime.datetime.fromisoformat({forecast_datetime!r})"
+                if forecast_datetime
+                else "start_time + datetime.timedelta(days=5)"
             )
+            if fn.endswith("reconstruction"):
+                call_start = "start_time"
+                second = "start_time + datetime.timedelta(days=simtime.to_value(u.day))"
+            else:
+                call_start = forecast_time
+                second = "simtime=simtime, buffertime=5*u.day"
             longitude_args = ""
             if not state.get("is_1d", False):
                 longitude_args = (
@@ -220,7 +227,7 @@ def build_generated_code(request: SimulationRequest) -> str:
                 )
             lines.extend(
                 [
-                    f"model = sinsit.{fn}(start_time, {second}, rmin=rmin, rmax=rmax, "
+                    f"model = sinsit.{fn}({call_start}, {second}, rmin=rmin, rmax=rmax, "
                     f"dr={float(state.get('dr_rs', 1.5))}*u.solRad, "
                     f"nlon={int(state.get('nlon', 128))}, "
                     f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s), "

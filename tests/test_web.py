@@ -2,6 +2,7 @@
 
 import datetime
 import html
+import json
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -93,7 +94,7 @@ def test_preview_uses_model_start_for_wsa_iswa_map_time_when_checked():
 
     body = html.unescape(response.get_data(as_text=True))
     assert response.status_code == 200
-    assert "iswa_map_time = datetime.datetime.fromisoformat('2026-07-03T12:00:00')" in body
+    assert "iswa_map_time = datetime.datetime.fromisoformat('2026-07-08T12:00:00')" in body
     assert "2026-07-07T09:30:00" not in body
 
 
@@ -140,6 +141,7 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'id="run-surf-button"' in response.data
     assert b'id="iswa-map-date"' in response.data
     assert b'name="iswa_use_model_start" id="iswa-use-model-start" type="checkbox" checked' in response.data
+    assert b"Use model start time + 5 days" in response.data
     assert b"busy-button" in response.data
     assert b"Grabbing and processing input data" in response.data
     assert b"Preparing run..." in response.data
@@ -167,6 +169,9 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'name="track_cmes" type="checkbox"' in response.data
     assert b'name="track_cmes" type="checkbox" checked' not in response.data
     assert b'<option value="forecast">Forecast</option>' in response.data
+    assert b'id="omni-forecast-datetime"' in response.data
+    assert b'modelStartInput.addEventListener("input", syncOmniForecastTime)' in response.data
+    assert response.data.count(b"syncOmniForecastTime();") >= 4
     assert b"Reconstruction (requires 27 days of data after run end time)" in response.data
     assert b"Cone CME lists (typically for model inner boundary at 0.1 AU)" in response.data
     assert b"Configure, run and explore SURF simulations" not in response.data
@@ -202,6 +207,19 @@ def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
     assert "hover:border-cyan-200" in template
 
 
+def test_timeseries_is_default_plot_product_and_omni_is_earth_only():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'class="inner-tab-button active" data-inner-tab="timeseries-product"' in template
+    assert 'class="product-panel active wide" data-inner-panel="timeseries-product"' in template
+    assert 'id="timeseries-plot-omni" type="checkbox" checked' in template
+    assert 'plot_omni: document.getElementById("timeseries-plot-omni").checked' in template
+    assert 'timeseriesObserver.value === "Earth"' in template
+    assert 'sa.plot_earth_timeseries(model, plot_omni=True)' in template
+    assert 'sa.plot_earth_timeseries(model, plot_omni=False)' in template
+    assert 'OMNI may be unavailable for the requested dates.' in template
+
+
 def test_template_hides_post_run_tabs_when_run_becomes_stale():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
 
@@ -220,6 +238,14 @@ def test_template_hides_post_run_tabs_when_run_becomes_stale():
     assert "plotCodeHistory.length = 0;" in template
     assert 'generatedCodePre.textContent = "";' in template
     assert "resetGeneratedCodeForCurrentState();" in template
+    invalidation = template[
+        template.index("function invalidateCompletedRun()"):
+        template.index('runForm.addEventListener("input", invalidateCompletedRun)')
+    ]
+    assert "if (grabDonkiAtRunStart.checked && cmes.length)" in invalidation
+    assert "cmes.splice(0, cmes.length);" in invalidation
+    assert "selectedCmeIndex = -1;" in invalidation
+    assert "renderCmes();" in invalidation
 
 
 def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
@@ -326,6 +352,60 @@ def test_generated_code_endpoint_includes_gamma_for_non_huxt_solver():
     code = response.get_json()["code"]
     assert "solver='hydro'" in code
     assert "model.set_gamma(1.42)" in code
+
+
+def test_donki_preview_matches_surf_query_and_cone_defaults(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    requested_urls = []
+    analyses = [
+        {
+            "time21_5": "2026-07-04T12:00:00Z",
+            "longitude": -10,
+            "latitude": 2,
+            "speed": 900,
+            "halfAngle": 30,
+        },
+        {
+            "time21_5": "2026-07-03T18:00:00Z",
+            "longitude": 20,
+            "latitude": -3,
+            "speed": 700,
+            "halfAngle": 25,
+        },
+    ]
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(analyses).encode("utf-8")
+
+    def fake_urlopen(url, timeout):
+        requested_urls.append((url, timeout))
+        return Response()
+
+    monkeypatch.setattr(web_app, "urlopen", fake_urlopen)
+    cmes = web_app._fetch_donki_cmes(datetime.datetime(2026, 7, 3, 12), 1)
+
+    url, timeout = requested_urls[0]
+    assert "mostAccurateOnly=true" in url
+    assert "feature=LE" in url
+    assert "catalog=ALL" in url
+    assert "completeEntryOnly" not in url
+    assert timeout == 30
+    assert [cme["t_launch_day"] for cme in cmes] == [0.25, 1.0]
+    assert cmes[1]["longitude"] == 350.0
+    assert cmes[1]["width"] == 60.0
+    assert cmes[1]["thickness_rs"] == 0
+    assert cmes[1]["initial_height_rs"] == 21.5
+    assert cmes[1]["cme_fixed_duration"] is True
+    assert cmes[1]["fixed_duration_hr"] == 12
+    assert cmes[1]["profile_type"] == "square"
 
 
 def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):

@@ -391,6 +391,11 @@ class InSituAmbientTab(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["reconstruction", "forecast"])
 
+        self.forecast_datetime = QDateTimeEdit()
+        self.forecast_datetime.setCalendarPopup(True)
+        self.forecast_datetime.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.mode_combo.currentTextChanged.connect(self._sync_forecast_time_enabled)
+
         info = QLabel(
             "Uses the model start time and run time to initialize the OMNI-based "
             "SURF setup."
@@ -398,15 +403,34 @@ class InSituAmbientTab(QWidget):
         info.setWordWrap(True)
 
         form.addRow("Mode", self.mode_combo)
+        form.addRow("Forecast time", self.forecast_datetime)
         box.setLayout(form)
 
         layout.addWidget(box)
         layout.addWidget(info)
         self.setLayout(layout)
+        self.set_model_start_datetime(
+            datetime.datetime.now(datetime.UTC).replace(tzinfo=None, microsecond=0)
+        )
+        self._sync_forecast_time_enabled(self.mode_combo.currentText())
 
     def get_state(self):
         """Return current InSitu settings."""
-        return {"mode": self.mode_combo.currentText()}
+        return {
+            "mode": self.mode_combo.currentText(),
+            "forecast_datetime": self.forecast_datetime.dateTime().toString(
+                "yyyy-MM-dd HH:mm:ss"
+            ),
+        }
+
+    def set_model_start_datetime(self, dt: datetime.datetime):
+        """Keep the forecast time five days after the model start time."""
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        self.forecast_datetime.setDateTime(QDateTime(dt + datetime.timedelta(days=5)))
+
+    def _sync_forecast_time_enabled(self, mode: str):
+        self.forecast_datetime.setEnabled(mode == "forecast")
 
 
 class OmniAmbientTab(QWidget):
@@ -859,9 +883,13 @@ class WsaAmbientTab(FileAmbientTab):
             self.iswa_datetime_edit = QDateTimeEdit()
             self.iswa_datetime_edit.setCalendarPopup(True)
             self.iswa_datetime_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-            self.iswa_datetime_edit.setDateTime(QDateTime(self.model_start_datetime))
+            self.iswa_datetime_edit.setDateTime(
+                QDateTime(self.model_start_datetime + datetime.timedelta(days=5))
+            )
             self.iswa_datetime_edit.dateTimeChanged.connect(self._on_iswa_datetime_changed)
-            self.use_model_start_for_iswa_toggle = QCheckBox("Use model start time")
+            self.use_model_start_for_iswa_toggle = QCheckBox(
+                "Use model start time + 5 days"
+            )
             self.use_model_start_for_iswa_toggle.setChecked(True)
             self.use_model_start_for_iswa_toggle.toggled.connect(
                 self._on_use_model_start_for_iswa_toggled
@@ -925,7 +953,7 @@ class WsaAmbientTab(FileAmbientTab):
         """Track the model start used by other download-backed ambient sources."""
         super().set_model_start_datetime(dt)
         if self.use_iswa_download and self.use_model_start_for_iswa_toggle.isChecked():
-            self._set_iswa_datetime(dt)
+            self._set_iswa_datetime(dt + datetime.timedelta(days=5))
 
     def _set_iswa_datetime(self, dt: datetime.datetime):
         """Set the ISWA request datetime without double-emitting change handling."""
@@ -941,7 +969,9 @@ class WsaAmbientTab(FileAmbientTab):
         synced = self.use_model_start_for_iswa_toggle.isChecked()
         self.iswa_datetime_edit.setEnabled(not synced)
         if synced:
-            self._set_iswa_datetime(self.model_start_datetime)
+            self._set_iswa_datetime(
+                self.model_start_datetime + datetime.timedelta(days=5)
+            )
 
     def _on_use_model_start_for_iswa_toggled(self, _enabled=None):
         """Update ISWA map time mode when the sync checkbox changes."""
@@ -1127,6 +1157,7 @@ class AmbientSolarWindTab(QWidget):
         """Propagate model start time to sources that depend on it."""
         self.wsa_tab.set_model_start_datetime(dt)
         self.wsa_iswa_tab.set_model_start_datetime(dt)
+        self.insitu_tab.set_model_start_datetime(dt)
 
     def set_include_bpol(self, include_bpol: bool):
         """Propagate bpol plotting option to relevant source tabs."""
@@ -2386,8 +2417,10 @@ class SurfMainWindow(QMainWindow):
         self._connect_run_invalidation_signals()
 
     def _on_model_start_datetime_input_changed(self, _qdt: QDateTime):
-        """Ensure manual datetime edits immediately refresh cone-file CME launch offsets."""
-        self.cme_tab.set_model_start_datetime(self.model_tab.start_datetime.dateTime().toPyDateTime())
+        """Immediately propagate manual model start-time edits to dependent controls."""
+        model_start = self.model_tab.start_datetime.dateTime().toPyDateTime()
+        self.cme_tab.set_model_start_datetime(model_start)
+        self.ambient_tab.set_model_start_datetime(model_start)
 
     def _build_generated_code(self):
         """Create a runnable Python script from current GUI state."""

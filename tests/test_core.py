@@ -1,5 +1,7 @@
 """Fast tests for framework-neutral SURFs_UP behaviour."""
 
+import datetime
+
 from types import SimpleNamespace
 
 import astropy.units as u
@@ -11,12 +13,41 @@ from surfs_up.core import (
     SimulationRequest,
     build_generated_code,
     build_uniform_boundary_code,
+    format_datetime_axis_like_surf,
     plot_custom_timeseries,
     plot_radial,
     run_generated_code,
     sample_custom_timeseries,
     timeseries_figsize,
 )
+
+
+def test_datetime_axis_uses_daily_labels_for_five_day_run():
+    start = datetime.datetime(2026, 7, 1)
+    times = [start, start + datetime.timedelta(days=5)]
+    fig, axis = plt.subplots()
+
+    format_datetime_axis_like_surf(fig, [axis], times)
+    ticks = axis.xaxis.get_major_locator().tick_values(*times)
+
+    assert len(ticks) <= 7
+    assert np.allclose(np.diff(ticks), 1.0)
+    plt.close(fig)
+
+
+def test_datetime_axis_uses_two_day_labels_and_daily_minor_ticks_for_ten_days():
+    start = datetime.datetime(2026, 7, 1)
+    times = [start, start + datetime.timedelta(days=10)]
+    fig, axis = plt.subplots()
+
+    format_datetime_axis_like_surf(fig, [axis], times)
+    major_ticks = axis.xaxis.get_major_locator().tick_values(*times)
+    minor_ticks = axis.xaxis.get_minor_locator().tick_values(*times)
+
+    assert len(major_ticks) <= 7
+    assert np.allclose(np.diff(major_ticks), 2.0)
+    assert np.allclose(np.diff(minor_ticks), 1.0)
+    plt.close(fig)
 
 
 def request() -> SimulationRequest:
@@ -298,11 +329,14 @@ def test_generated_code_passes_longitude_range_to_omni_backmapped():
     simulation.ambient = {
         "source": "insitu_backmapped",
         "mode": "forecast",
+        "forecast_datetime": "2024-05-11 00:00:00",
     }
 
     code = build_generated_code(simulation)
 
     compile(code, "<generated>", "exec")
     assert "omniSURF_forecast" in code
+    assert "datetime.datetime.fromisoformat('2024-05-11 00:00:00')" in code
+    assert "simtime=simtime, buffertime=5*u.day" in code
     assert "lon_start=120.0*u.deg" in code
     assert "lon_stop=240.0*u.deg" in code

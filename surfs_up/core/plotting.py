@@ -22,7 +22,7 @@ def _cme_coords_at_time(cme, time_index: int):
 
 
 def format_datetime_axis_like_surf(fig, axes, times):
-    """Format a shared datetime x-axis using SURF's compact date style."""
+    """Format a shared datetime axis with at most about seven date labels."""
     axes = np.atleast_1d(axes)
     starttime = times.iloc[0] if hasattr(times, "iloc") else times[0]
     endtime = times.iloc[-1] if hasattr(times, "iloc") else times[-1]
@@ -30,11 +30,20 @@ def format_datetime_axis_like_surf(fig, axes, times):
     for axis in axes:
         axis.set_xlim(starttime, endtime)
 
-    duration_days = (endtime - starttime).total_seconds() / 86400
-    if duration_days <= 7:
-        axes[-1].xaxis.set_major_locator(mdates.DayLocator())
+    duration_days = max(0.0, (endtime - starttime).total_seconds() / 86400)
+    if duration_days >= 1:
+        # Six intervals produce no more than about seven labels including both
+        # ends: daily for a five-day run, every two days for a ten-day run.
+        major_interval_days = max(1, int(np.ceil(duration_days / 6)))
+        axes[-1].xaxis.set_major_locator(
+            mdates.DayLocator(interval=major_interval_days)
+        )
+        if major_interval_days > 1:
+            axes[-1].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
     else:
-        axes[-1].xaxis.set_major_locator(mdates.AutoDateLocator())
+        axes[-1].xaxis.set_major_locator(
+            mdates.AutoDateLocator(minticks=3, maxticks=7)
+        )
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%d-%m"))
     fig.autofmt_xdate(rotation=0, ha="center")
     axes[-1].set_xlabel(f"DD-MM of {starttime.year}", fontsize=12, fontweight="bold")

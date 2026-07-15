@@ -162,7 +162,9 @@ def _model_defaults() -> dict[str, object]:
     earth_latitude = sin.get_earth_lat(now)
     return {
         "default_start": now.strftime("%Y-%m-%dT%H:%M:%S"),
-        "default_iswa_map_datetime": today.strftime("%Y-%m-%dT%H:%M"),
+        "default_iswa_map_datetime": (now + datetime.timedelta(days=5)).strftime(
+            "%Y-%m-%dT%H:%M"
+        ),
         "default_cr_num": int(cr_num),
         "default_cr_lon": cr_lon.to_value(u.deg),
         "default_latitude": (
@@ -195,9 +197,8 @@ def _fetch_donki_cmes(
         {
             "startDate": start.date().isoformat(),
             "endDate": end.date().isoformat(),
-            "completeEntryOnly": "true",
-            "speed": "0",
-            "halfAngle": "0",
+            "mostAccurateOnly": "true",
+            "feature": "LE",
             "catalog": "ALL",
         }
     )
@@ -211,8 +212,6 @@ def _fetch_donki_cmes(
         launch = datetime.datetime.fromisoformat(
             str(launch_text).replace("Z", "+00:00")
         ).replace(tzinfo=None)
-        if not start <= launch <= end:
-            continue
         if any(
             analysis.get(key) is None
             for key in ("longitude", "latitude", "speed", "halfAngle")
@@ -220,7 +219,8 @@ def _fetch_donki_cmes(
             continue
         results.append(
             {
-                "longitude": float(analysis["longitude"]),
+                # ConeCME normalizes HEEQ longitude into the [0, 360) domain.
+                "longitude": float(analysis["longitude"]) % 360.0,
                 "latitude": float(analysis["latitude"]),
                 "speed": float(analysis["speed"]),
                 "width": 2 * float(analysis["halfAngle"]),
@@ -238,7 +238,8 @@ def _fetch_donki_cmes(
                 "source": "donki",
             }
         )
-    return results
+    # cone_dict_to_cme_list(), used by sin.get_DONKI_cme_list(), sorts by launch time.
+    return sorted(results, key=lambda cme: float(cme["t_launch_day"]))
 
 
 def _example_input_path(pattern: str, missing_message: str) -> Path:
@@ -627,7 +628,10 @@ def _ambient_preview_figure():
     if source == "wsa_iswa":
         iswa_fallback = request.form.get("start_datetime", "")
         iswa_value = (
-            iswa_fallback
+            (
+                datetime.datetime.fromisoformat(iswa_fallback.replace("T", " "))
+                + datetime.timedelta(days=5)
+            ).isoformat()
             if "iswa_use_model_start" in request.form
             else request.form.get("iswa_map_date", "")
         )
@@ -713,8 +717,14 @@ def _request_from_form() -> SimulationRequest:
             if map_time is not None:
                 start = map_time.strftime("%Y-%m-%d %H:%M:%S")
     elif source == "wsa_iswa":
+        synced_iswa_datetime = (
+            datetime.datetime.fromisoformat(start.replace("T", " "))
+            + datetime.timedelta(days=5)
+        ).isoformat()
         iswa_datetime = _iswa_map_datetime(
-            start if "iswa_use_model_start" in request.form else request.form.get("iswa_map_date", ""),
+            synced_iswa_datetime
+            if "iswa_use_model_start" in request.form
+            else request.form.get("iswa_map_date", ""),
             start,
         )
         ambient.update(
@@ -738,6 +748,7 @@ def _request_from_form() -> SimulationRequest:
                 start = map_time.strftime("%Y-%m-%d %H:%M:%S")
     elif source == "insitu_backmapped":
         ambient["mode"] = request.form.get("insitu_mode", "forecast")
+        ambient["forecast_datetime"] = request.form.get("omni_forecast_datetime", "")
     elif source == "omni":
         ambient["use_215_inner_boundary"] = "use_215_inner_boundary" in request.form
 
@@ -978,6 +989,30 @@ def create_app(config: dict | None = None) -> Flask:
                         model,
                         float(request.args.get("radius", 1)) * u.AU,
                         lon=float(request.args.get("timeseries_lon", 0)) * u.deg,
+                    )
+                elif observer == "Earth":
+                    plot_omni = request.args.get("plot_omni", "1") == "1"
+                    try:
+                        figure, axes = sa.plot_earth_timeseries(
+                            model, plot_omni=plot_omni
+                        )
+                    except Exception:
+                        if not plot_omni:
+                            raise
+                        app.logger.warning(
+                            "OMNI data could not be plotted; returning the SURF-only "
+                            "Earth time series.",
+                            exc_info=True,
+                        )
+                        plt.close("all")
+                        figure, axes = sa.plot_earth_timeseries(
+                            model, plot_omni=False
+                        )
+                    earth_series = sa.get_observer_timeseries(model, observer="Earth")
+                    format_datetime_axis_like_surf(
+                        figure,
+                        axes,
+                        earth_series["time"],
                     )
                 else:
                     import numpy as np
