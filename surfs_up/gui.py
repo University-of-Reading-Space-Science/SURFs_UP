@@ -405,6 +405,11 @@ class InSituAmbientTab(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["reconstruction", "forecast"])
 
+        self.icme_list_combo = QComboBox()
+        self.icme_list_combo.addItem("None", "None")
+        self.icme_list_combo.addItem("CaneRichardson", "CaneRichardson")
+        self.icme_list_combo.addItem("DONKI", "DONKI")
+
         self.forecast_datetime = QDateTimeEdit()
         self.forecast_datetime.setCalendarPopup(True)
         self.forecast_datetime.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
@@ -418,6 +423,7 @@ class InSituAmbientTab(QWidget):
 
         form.addRow("Mode", self.mode_combo)
         form.addRow("Forecast time", self.forecast_datetime)
+        form.addRow("Remove ICMEs using", self.icme_list_combo)
         box.setLayout(form)
 
         layout.addWidget(box)
@@ -435,6 +441,7 @@ class InSituAmbientTab(QWidget):
             "forecast_datetime": self.forecast_datetime.dateTime().toString(
                 "yyyy-MM-dd HH:mm:ss"
             ),
+            "icme_list": self.icme_list_combo.currentData(),
         }
 
     def set_model_start_datetime(self, dt: datetime.datetime):
@@ -442,6 +449,7 @@ class InSituAmbientTab(QWidget):
         if dt.tzinfo is not None:
             dt = dt.replace(tzinfo=None)
         self.forecast_datetime.setDateTime(QDateTime(dt + datetime.timedelta(days=5)))
+        self.icme_list_combo.setCurrentIndex(2 if dt.year >= 2026 else 1)
 
     def _sync_forecast_time_enabled(self, mode: str):
         self.forecast_datetime.setEnabled(mode == "forecast")
@@ -464,6 +472,11 @@ class OmniAmbientTab(QWidget):
         )
         self.use_215_inner_boundary_toggle.setChecked(True)
 
+        self.icme_list_combo = QComboBox()
+        self.icme_list_combo.addItem("None", "None")
+        self.icme_list_combo.addItem("CaneRichardson", "CaneRichardson")
+        self.icme_list_combo.addItem("DONKI", "DONKI")
+
         info = QLabel(
             "Build time-dependent boundary conditions directly from OMNI observations "
             "for outward model runs."
@@ -471,6 +484,7 @@ class OmniAmbientTab(QWidget):
         info.setWordWrap(True)
 
         form.addRow("", self.use_215_inner_boundary_toggle)
+        form.addRow("Remove ICMEs using", self.icme_list_combo)
         box.setLayout(form)
 
         layout.addWidget(box)
@@ -481,7 +495,12 @@ class OmniAmbientTab(QWidget):
         """Return current OMNI settings."""
         return {
             "use_215_inner_boundary": self.use_215_inner_boundary_toggle.isChecked(),
+            "icme_list": self.icme_list_combo.currentData(),
         }
+
+    def set_model_start_datetime(self, dt: datetime.datetime):
+        """Select the catalogue that covers the model start date by default."""
+        self.icme_list_combo.setCurrentIndex(2 if dt.year >= 2026 else 1)
 
 
 class FileAmbientTab(QWidget):
@@ -1193,6 +1212,7 @@ class AmbientSolarWindTab(QWidget):
         self.wsa_tab.set_model_start_datetime(dt)
         self.wsa_iswa_tab.set_model_start_datetime(dt)
         self.insitu_tab.set_model_start_datetime(dt)
+        self.omni_tab.set_model_start_datetime(dt)
 
     def set_include_bpol(self, include_bpol: bool):
         """Propagate bpol plotting option to relevant source tabs."""

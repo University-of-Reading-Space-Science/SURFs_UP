@@ -321,6 +321,13 @@
         <button type="button" class="inner-tab-button" data-inner-tab="omni-outwards"
                 data-omni-source="omni">Run from 1 AU outwards</button>
       </div>
+      <label class="mb-4">Remove ICMEs using
+        <select name="omni_icme_list" id="omni-icme-list">
+          <option value="None">None</option>
+          <option value="CaneRichardson">CaneRichardson</option>
+          <option value="DONKI">DONKI</option>
+        </select>
+      </label>
       <div>
         <section class="product-panel active rounded-xl border border-slate-200 bg-white p-4"
                  data-inner-panel="omni-backmapped">
@@ -1798,6 +1805,7 @@
     const modelStartInput = document.getElementById("model-start-datetime");
     const omniForecastDatetime = document.getElementById("omni-forecast-datetime");
     const insituMode = document.getElementById("insitu-mode");
+    const omniIcmeList = document.getElementById("omni-icme-list");
     const modelCrNumber = document.getElementById("model-cr-number");
     const modelCrLongitude = document.getElementById("model-cr-longitude");
     const modelLatitude = document.getElementById("model-latitude");
@@ -1837,6 +1845,11 @@
       forecast.setUTCDate(forecast.getUTCDate() + 5);
       omniForecastDatetime.value = forecast.toISOString().slice(0, 19);
     }
+    function syncOmniIcmeDefault() {
+      if (!omniIcmeList || !modelStartInput.value) return;
+      omniIcmeList.value = utcInputDate(modelStartInput).getUTCFullYear() >= 2026
+        ? "DONKI" : "CaneRichardson";
+    }
     function syncOmniForecastTimeState() {
       if (!omniForecastDatetime || !insituMode) return;
       omniForecastDatetime.disabled = insituMode.value !== "forecast";
@@ -1867,6 +1880,7 @@
       modelLatitude.value = coordinates.earth_latitude.toFixed(2);
       syncCmeDatetimeFromDay();
       syncOmniForecastTime();
+      syncOmniIcmeDefault();
       clearStaleDonkiCmes();
     }
     function clearStaleDonkiCmes() {
@@ -1883,7 +1897,9 @@
       updateCoordinates({datetime: modelStartInput.value}).catch(console.error);
     });
     modelStartInput.addEventListener("input", syncOmniForecastTime);
+    modelStartInput.addEventListener("input", syncOmniIcmeDefault);
     syncOmniForecastTime();
+    syncOmniIcmeDefault();
     if (insituMode) {
       insituMode.addEventListener("change", syncOmniForecastTimeState);
       syncOmniForecastTimeState();

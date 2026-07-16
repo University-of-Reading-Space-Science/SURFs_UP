@@ -793,8 +793,10 @@ def _request_from_form() -> SimulationRequest:
     elif source == "insitu_backmapped":
         ambient["mode"] = request.form.get("insitu_mode", "forecast")
         ambient["forecast_datetime"] = request.form.get("omni_forecast_datetime", "")
+        ambient["icme_list"] = request.form.get("omni_icme_list", "None")
     elif source == "omni":
         ambient["use_215_inner_boundary"] = "use_215_inner_boundary" in request.form
+        ambient["icme_list"] = request.form.get("omni_icme_list", "None")
 
     cmes_text = request.form.get("cmes_json", "").strip()
     cmes = json.loads(cmes_text) if cmes_text else []

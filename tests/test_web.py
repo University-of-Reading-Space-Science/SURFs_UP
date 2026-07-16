@@ -201,6 +201,10 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b'name="track_cmes" type="checkbox" checked' not in response.data
     assert b'<option value="forecast">Forecast</option>' in response.data
     assert b'id="omni-forecast-datetime"' in response.data
+    assert b'name="omni_icme_list" id="omni-icme-list"' in response.data
+    assert b'<option value="CaneRichardson">CaneRichardson</option>' in response.data
+    assert b'<option value="DONKI">DONKI</option>' in response.data
+    assert b'modelStartInput.addEventListener("input", syncOmniIcmeDefault)' in response.data
     assert b'modelStartInput.addEventListener("input", syncOmniForecastTime)' in response.data
     assert response.data.count(b"syncOmniForecastTime();") >= 4
     assert b"Reconstruction (requires 27 days of data after run end time)" in response.data

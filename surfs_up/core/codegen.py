@@ -5,6 +5,29 @@ from __future__ import annotations
 from .models import SimulationRequest
 
 
+def _omni_icme_list(state: dict, ambient: dict) -> str | None:
+    """Return the selected ICME catalogue, including a date-based legacy default."""
+    if "icme_list" in ambient:
+        value = ambient["icme_list"]
+        # SURF accepts the literal string "None" to bypass ICME removal.  Use
+        # it consistently because some released versions do not handle the
+        # Python ``None`` value correctly.
+        return "None" if value in {None, "None", ""} else str(value)
+    year = int(str(state["start_datetime"])[:4])
+    return "DONKI" if year >= 2026 else "CaneRichardson"
+
+
+def _raw_omni_gap_fill_lines(start: str, end: str) -> list[str]:
+    """Download raw OMNI and fill ordinary gaps without removing ICME intervals."""
+    return [
+        f"omni_input = sinsit.get_omni({start}, {end})",
+        "omni_numeric = omni_input.select_dtypes(include='number').columns",
+        "omni_input[omni_numeric] = omni_input[omni_numeric].interpolate(",
+        "    method='linear', limit_direction='both'",
+        ")",
+    ]
+
+
 def build_uniform_boundary_code(request: SimulationRequest) -> str:
     """Build a SURF script for the portable, user-specified boundary workflow."""
     request.validate()
@@ -98,6 +121,7 @@ def build_generated_code(request: SimulationRequest) -> str:
     request.validate()
     state, ambient, cmes = request.model, request.ambient, request.cmes
     solver = str(state["solver"]).lower()
+    omni_icme_list = _omni_icme_list(state, ambient)
     gamma = float(state.get("gamma", 1.5))
     if (
         ambient["source"] == "user_specified"
@@ -220,15 +244,22 @@ def build_generated_code(request: SimulationRequest) -> str:
             if fn.endswith("reconstruction"):
                 call_start = "start_time"
                 second = "start_time + datetime.timedelta(days=simtime.to_value(u.day))"
+                raw_omni_start = "start_time - datetime.timedelta(days=28)"
+                raw_omni_end = "start_time + datetime.timedelta(days=simtime.to_value(u.day) + 28)"
             else:
                 call_start = forecast_time
                 second = "simtime=simtime, buffertime=5*u.day"
+                raw_omni_start = f"{forecast_time} - datetime.timedelta(days=28)"
+                raw_omni_end = f"{forecast_time} + datetime.timedelta(days=28)"
             longitude_args = ""
             if not state.get("is_1d", False):
                 longitude_args = (
                     f", lon_start={float(state.get('lon_min', 0))}*u.deg, "
                     f"lon_stop={float(state.get('lon_max', 360))}*u.deg"
                 )
+            if omni_icme_list == "None":
+                lines.extend(_raw_omni_gap_fill_lines(raw_omni_start, raw_omni_end))
+            omni_input_arg = ", omni_input=omni_input" if omni_icme_list == "None" else ""
             lines.extend(
                 [
                     f"model = sinsit.{fn}({call_start}, {second}, rmin=rmin, rmax=rmax, "
@@ -238,6 +269,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"dt_scale=4, solver=solver, run_2d={not state.get('is_1d', False)}, "
                     f"track_cmes={bool(state.get('track_cmes', False))}, "
                     f"include_b_boundary={include_bpol}"
+                    f", icme_list={omni_icme_list!r}"
+                    f"{omni_input_arg}"
                     f"{longitude_args})"
                 ]
             )
@@ -255,8 +288,18 @@ def build_generated_code(request: SimulationRequest) -> str:
             lines.append(
                 "end_time = start_time + datetime.timedelta(days=simtime.to_value(u.day))"
             )
+            if omni_icme_list == "None":
+                lines.extend(
+                    _raw_omni_gap_fill_lines(
+                        "start_time - datetime.timedelta(days=28)",
+                        "end_time + datetime.timedelta(days=28)",
+                    )
+                )
             if ambient.get("use_215_inner_boundary", True):
                 longitude_args = ""
+                omni_input_arg = (
+                    ", omni_input=omni_input" if omni_icme_list == "None" else ""
+                )
                 if not state.get("is_1d", False):
                     longitude_args = (
                         f", lon_start={float(state.get('lon_min', 0))}*u.deg"
@@ -271,6 +314,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"dt_scale=4, solver=solver, run_2d={not state.get('is_1d', False)}, "
                     f"track_cmes={bool(state.get('track_cmes', False))}, "
                     f"include_b_boundary={include_bpol}"
+                    f", icme_list={omni_icme_list!r}"
+                    f"{omni_input_arg}"
                     f"{longitude_args})"
                 )
             else:

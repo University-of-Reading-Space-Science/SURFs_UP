@@ -376,3 +376,35 @@ def test_generated_omni_functions_follow_include_bpol_selection():
     code = build_generated_code(simulation)
     assert "omniSURF_1au_out" in code
     assert "include_b_boundary=False" in code
+
+
+def test_generated_omni_functions_pass_selected_icme_list():
+    simulation = request()
+    simulation.ambient = {
+        "source": "insitu_backmapped",
+        "mode": "forecast",
+        "icme_list": "DONKI",
+    }
+    assert "icme_list='DONKI'" in build_generated_code(simulation)
+
+    simulation.ambient = {
+        "source": "omni",
+        "use_215_inner_boundary": True,
+        "icme_list": None,
+    }
+    code = build_generated_code(simulation)
+    assert "icme_list='None'" in code
+    assert "omni_input = sinsit.get_omni" in code
+    assert "select_dtypes(include='number')" in code
+    assert "limit_direction='both'" in code
+    assert "omni_input=omni_input" in code
+
+
+def test_generated_omni_icme_list_has_date_based_default():
+    simulation = request()
+    simulation.ambient = {"source": "insitu_backmapped", "mode": "reconstruction"}
+    simulation.model["start_datetime"] = "2025-12-31 00:00:00"
+    assert "icme_list='CaneRichardson'" in build_generated_code(simulation)
+
+    simulation.model["start_datetime"] = "2026-01-01 00:00:00"
+    assert "icme_list='DONKI'" in build_generated_code(simulation)
