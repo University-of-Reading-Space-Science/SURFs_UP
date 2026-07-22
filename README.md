@@ -1,47 +1,35 @@
 # SURFs_UP
 
-SURFs_UP provides desktop and web interfaces for
-[SURF](https://github.com/University-of-Reading-Space-Science/SURF). It is
-packaged separately so SURF can remain a GUI-independent modelling library.
+SURFs_UP provides a web interface for
+[SURF](https://github.com/University-of-Reading-Space-Science/SURF). It can be
+run locally or deployed to a WSGI host such as PythonAnywhere.
 
-Both interfaces use `surfs_up.core` for request validation and execution.
-Interface code should only translate widgets or form fields into a
-`SimulationRequest`; reusable modelling behaviour belongs in the core package.
+The Flask application uses `surfs_up.core` for request validation, code
+generation, plotting, and execution.
 
 ## Development installation
 
-Install SURF and SURFs_UP into the same environment. Choose the interface extras
-you need:
+Install SURF and SURFs_UP into the same environment:
 
 ```powershell
 pip install -e ../SURF
-pip install -e ".[desktop]"
+pip install -e .
 ```
 
-Run the application with either command:
+Run the local web application with either command:
 
 ```powershell
 surfs-up
-surf-gui
-```
-
-The `surf-gui` alias is retained for users of the original bundled GUI.
-
-## Web interface
-
-The Flask workflow supports user-specified, MAS, WSA, CorTom, OMNI-backmapped,
-and OMNI-outwards ambient boundaries, plus magnetic boundaries, streak lines,
-and JSON-defined Cone CMEs. It uses the same `SimulationRequest`, general code
-generator, and execution service as the desktop application:
-
-```powershell
-pip install -e ".[web]"
 surfs-up-web
 ```
 
+The Flask workflow supports user-specified, MAS, WSA, CorTom, OMNI-backmapped,
+and OMNI-outwards ambient boundaries, plus magnetic boundaries, streak lines,
+and JSON-defined Cone CMEs.
+
 Open `http://127.0.0.1:5000`. The web form can preview generated code or run it
 synchronously. Completed models can produce 2D maps, radial profiles, time
-series, and downloadable GIF movies. Up to eight models are retained in the
+series, and downloadable MP4 movies. Up to eight models are retained in the
 current web process; restarting or reloading the process clears them.
 
 Before exposing a production site to multiple users, move long model and movie
@@ -51,8 +39,8 @@ in-memory result store is intended for development and single-worker trials.
 
 ## PythonAnywhere
 
-Create a virtual environment, install SURF and then install this project with
-the web extra. Configure the PythonAnywhere web app's WSGI file to import the
+Create a virtual environment, install SURF and then install this project.
+Configure the PythonAnywhere web app's WSGI file to import the
 provided application:
 
 ```python

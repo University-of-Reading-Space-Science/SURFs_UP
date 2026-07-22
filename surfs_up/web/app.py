@@ -1,9 +1,8 @@
-"""Flask application factory using the same core services as the desktop GUI."""
+"""Flask application factory for configuring and running SURF models."""
 
 from __future__ import annotations
 
 import datetime
-import csv
 import inspect
 import io
 import json
@@ -31,7 +30,6 @@ from surfs_up.core import (
     plot_radial as plot_radial_profile,
     run_generated_code,
     sample_custom_timeseries,
-    timeseries_figsize,
 )
 
 _RUNS: OrderedDict[str, object] = OrderedDict()
@@ -191,6 +189,14 @@ def _set_run_progress(progress_id: str, message: str) -> None:
             _RUN_PROGRESS.popitem(last=False)
 
 
+def _earth_latitude_at(model_time: datetime.datetime):
+    """Return Earth's heliographic latitude without relying on sampled ephemeris data."""
+    import astropy.units as u
+    from sunpy.coordinates import sun
+
+    return sun.B0(model_time).to(u.deg)
+
+
 def _model_defaults() -> dict[str, object]:
     """Return the same time-dependent defaults initialized by the Qt model tab."""
     import astropy.units as u
@@ -202,7 +208,7 @@ def _model_defaults() -> dict[str, object]:
         today - datetime.timedelta(days=5)
     ).replace(tzinfo=None, microsecond=0)
     cr_num, cr_lon = sin.datetime2surfinputs(now)
-    earth_latitude = sin.get_earth_lat(now)
+    earth_latitude = _earth_latitude_at(now)
     surf_defaults = s.surf_constants()
     return {
         "default_start": now.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -837,19 +843,10 @@ def _request_from_form() -> SimulationRequest:
         and source != "omni"
         and abs(_float("rmin", 21.5) - 21.5) <= 1.0e-9
     )
-    if (
-        request.form.get("action") == "run"
-        and grab_donki_at_run_start
-    ):
-        model_start = datetime.datetime.fromisoformat(start.replace("T", " "))
-        cmes = [cme for cme in cmes if cme.get("source") != "donki"]
-        cmes.extend(
-            _fetch_donki_cmes(
-                model_start,
-                _float("simtime_days", 10.0),
-                request.form.get("solver", "huxt"),
-            )
-        )
+    if grab_donki_at_run_start:
+        # The generated script performs the DONKI request immediately before solve().
+        # Discard the editor list so checked means replace, not merge.
+        cmes = []
     cone_file = request.files.get("cone_file")
     if cone_file and cone_file.filename:
         import numpy as np
@@ -889,7 +886,7 @@ def _request_from_form() -> SimulationRequest:
             "lon_max": _float("lon_max", 360.0),
             "latitude": _float("latitude", 0.0),
             "is_1d": "is_1d" in request.form,
-            "frame": request.form.get("frame", "sidereal"),
+            "frame": request.form.get("frame", "synodic"),
             "include_bpol": "include_bpol" in request.form,
             "track_cmes": "track_cmes" in request.form,
             "grab_donki_at_run_start": grab_donki_at_run_start,
@@ -947,7 +944,7 @@ def create_app(config: dict | None = None) -> Flask:
                 model_time = model_time.replace(tzinfo=None)
 
         cr_num, cr_lon = sin.datetime2surfinputs(model_time)
-        earth_latitude = sin.get_earth_lat(model_time)
+        earth_latitude = _earth_latitude_at(model_time)
         return jsonify(
             {
                 "datetime": model_time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -981,7 +978,7 @@ def create_app(config: dict | None = None) -> Flask:
         try:
             simulation = _request_from_form()
             return jsonify({"code": build_generated_code(simulation)})
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        except (DonkiAccessError, json.JSONDecodeError, TypeError, ValueError) as exc:
             abort(400, str(exc))
 
     @app.route("/", methods=["GET", "POST"])
@@ -1087,7 +1084,9 @@ def create_app(config: dict | None = None) -> Flask:
                         lon=float(request.args.get("timeseries_lon", 0)) * u.deg,
                     )
                 elif observer == "Earth":
-                    plot_omni = request.args.get("plot_omni", "1") == "1"
+                    plot_omni = request.args.get(
+                        "plot_insitu", request.args.get("plot_omni", "1")
+                    ) == "1"
                     try:
                         figure, axes = sa.plot_earth_timeseries(
                             model, plot_omni=plot_omni
@@ -1118,22 +1117,94 @@ def create_app(config: dict | None = None) -> Flask:
                         (key, label)
                         for key, label in (
                             ("vsw", "V [km/s]"),
-                            ("bpol", "Bpol"),
-                            ("n", "n [cm-3]"),
+                            ("bpol", r"B$_{\mathrm{POL}}$"),
+                            ("n", r"n$_\mathrm{P}$ [cm$^{-3}$]"),
                             ("T", "T [K]"),
                         )
                         if key in series
                         and np.isfinite(np.asarray(series[key], dtype=float)).any()
                     ]
                     figure, axes = plt.subplots(
-                        len(fields), 1, figsize=timeseries_figsize(), sharex=True
+                        len(fields), 1, figsize=(14, 3 * len(fields)), sharex=True
                     )
                     for axis, (key, label) in zip(np.atleast_1d(axes), fields):
-                        axis.plot(series["time"], series[key], "r-")
+                        if key in {"n", "T"}:
+                            axis.semilogy(
+                                series["time"], series[key], "r-", label="SURF"
+                            )
+                        elif key == "bpol":
+                            axis.plot(
+                                series["time"], np.sign(series[key]), "r.", label="SURF"
+                            )
+                        else:
+                            axis.plot(series["time"], series[key], "r-", label="SURF")
                         axis.set_ylabel(label)
                         if key == "vsw":
-                            axis.set_ylim(300, 900)
+                            axis.set_ylim(250, 1000)
+                        elif key == "bpol":
+                            axis.set_ylim(-1.1, 1.1)
+                        elif key == "n":
+                            axis.set_ylim(0.101, 999)
+                        elif key == "T":
+                            axis.set_ylim(1e4, 9.9e6)
                         axis.grid(True, alpha=0.3)
+                        axis.legend()
+                    observation_sources = {
+                        "PSP": ("get_psp", "Parker Solar Probe"),
+                        "SOLO": ("get_solo", "Solar Orbiter"),
+                        "STA": ("get_stereo_a", "STEREO-A"),
+                    }
+                    observation_source = observation_sources.get(observer)
+                    plot_insitu = request.args.get("plot_insitu", "1") == "1"
+                    if observation_source and plot_insitu:
+                        try:
+                            import surf.surf_insitu as sinsit
+
+                            grabber_name, observation_label = observation_source
+                            observations = getattr(sinsit, grabber_name)(
+                                series["time"].iloc[0], series["time"].iloc[-1]
+                            )
+                            observation_fields = {
+                                "vsw": "V",
+                                "bpol": "BR",
+                                "n": "N",
+                                "T": "T",
+                            }
+                            for axis, (key, _label) in zip(np.atleast_1d(axes), fields):
+                                observation_key = observation_fields.get(key)
+                                if observation_key not in observations:
+                                    continue
+                                values = observations[observation_key]
+                                if key == "bpol":
+                                    values = np.sign(values) * 0.92
+                                    axis.plot(
+                                        observations["datetime"],
+                                        values,
+                                        "k.",
+                                        label=observation_label,
+                                    )
+                                elif key in {"n", "T"}:
+                                    axis.semilogy(
+                                        observations["datetime"],
+                                        values,
+                                        "k-",
+                                        label=observation_label,
+                                    )
+                                else:
+                                    axis.plot(
+                                        observations["datetime"],
+                                        values,
+                                        "k-",
+                                        label=observation_label,
+                                    )
+                                axis.legend()
+                        except Exception:
+                            app.logger.warning(
+                                "%s data could not be plotted; returning the "
+                                "SURF-only time series.",
+                                observation_source[1],
+                                exc_info=True,
+                            )
                     format_datetime_axis_like_surf(
                         figure,
                         np.atleast_1d(axes),
@@ -1181,6 +1252,7 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/runs/<run_id>/timeseries.csv")
     def timeseries_csv(run_id: str):
         import astropy.units as u
+        import pandas as pd
         import surf.surf_analysis as sa
 
         model = _model_for(run_id)
@@ -1191,16 +1263,76 @@ def create_app(config: dict | None = None) -> Flask:
             series = sample_custom_timeseries(model, radius, longitude)
         else:
             series = sa.get_observer_timeseries(model, observer=observer)
-        if hasattr(series, "to_csv"):
-            csv_text = series.to_csv(index=False)
+
+        if hasattr(series, "copy") and hasattr(series, "columns"):
+            surf_frame = series.copy()
         else:
-            columns = list(series)
-            rows = zip(*(series[column] for column in columns))
-            text = io.StringIO()
-            writer = csv.writer(text)
-            writer.writerow(columns)
-            writer.writerows(rows)
-            csv_text = text.getvalue()
+            normalized = {}
+            for key, values in series.items():
+                if hasattr(values, "value"):
+                    values = values.value
+                normalized[key] = values
+            surf_frame = pd.DataFrame(normalized)
+        if surf_frame.empty:
+            abort(500, "The SURF time series contains no values.")
+
+        time_column = "time" if "time" in surf_frame else "time_days"
+        surf_frame = surf_frame.rename(
+            columns={
+                column: f"SURF_{column}"
+                for column in surf_frame.columns
+                if column != time_column
+            }
+        ).rename(columns={time_column: "time"})
+        if time_column == "time":
+            surf_frame["time"] = pd.to_datetime(surf_frame["time"])
+
+        observation_sources = {
+            "Earth": ("get_omni", "OMNI"),
+            "PSP": ("get_psp", "PSP"),
+            "SOLO": ("get_solo", "SOLO"),
+            "STA": ("get_stereo_a", "STA"),
+        }
+        observation_source = observation_sources.get(observer)
+        plot_insitu = request.args.get(
+            "plot_insitu", request.args.get("plot_omni", "1")
+        ) == "1"
+        if observation_source and plot_insitu and time_column == "time":
+            try:
+                import surf.surf_insitu as sinsit
+
+                grabber_name, prefix = observation_source
+                observations = getattr(sinsit, grabber_name)(
+                    surf_frame["time"].iloc[0], surf_frame["time"].iloc[-1]
+                )
+                exported_fields = [
+                    field
+                    for field in ("datetime", "V", "N", "T", "BR", "BX_GSE", "B")
+                    if field in observations
+                ]
+                observation_frame = observations[exported_fields].copy()
+                observation_frame = observation_frame.rename(
+                    columns={
+                        field: "time" if field == "datetime" else f"{prefix}_{field}"
+                        for field in exported_fields
+                    }
+                )
+                observation_frame["time"] = pd.to_datetime(observation_frame["time"])
+                surf_frame = pd.merge(
+                    surf_frame,
+                    observation_frame,
+                    on="time",
+                    how="outer",
+                    sort=True,
+                )
+            except Exception:
+                app.logger.warning(
+                    "%s data could not be exported; writing SURF values only.",
+                    observation_source[1],
+                    exc_info=True,
+                )
+
+        csv_text = surf_frame.to_csv(index=False)
         payload = io.BytesIO(csv_text.encode("utf-8"))
         return send_file(
             payload,

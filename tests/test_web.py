@@ -3,6 +3,7 @@
 import datetime
 import html
 import json
+import math
 from urllib.error import URLError
 from io import BytesIO
 from pathlib import Path
@@ -187,6 +188,9 @@ def test_page_exposes_run_gated_workflow_and_configuration_controls():
     assert b"id=\"load-donki\"" in response.data
     assert b"Cone CME lists" in response.data
     assert b'name="grab_donki_at_run_start"' in response.data
+    assert response.data.index(b'<option value="synodic">') < response.data.index(
+        b'<option value="sidereal">'
+    )
     assert b"Grab the DONKI CMEs now" in response.data
     assert b"Load a user-supplied Cone CME list" in response.data
     assert b"SURF's UP" in response.data
@@ -259,10 +263,23 @@ def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
 
 def test_csv_export_prompts_for_filename_without_output_box():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    app_source = Path("surfs_up/web/app.py").read_text(encoding="utf-8")
 
     assert 'id="timeseries-csv-output"' not in template
     assert 'id="clear-timeseries-csv"' not in template
-    assert 'window.prompt("CSV filename"' in template
+    assert "window.showSaveFilePicker" in template
+    assert 'description: "CSV time-series data"' in template
+    assert "const writable = await fileHandle.createWritable({keepExistingData: false})" in template
+    assert "await writable.write(csvText)" in template
+    assert 'if (!csvText.trim() || !csvText.includes("SURF_"))' in template
+    assert 'fetch(csvUrl, {cache: "no-store"})' in template
+    assert 'window.prompt("CSV filename"' not in template
+    assert '"Earth": ("get_omni", "OMNI")' in app_source
+    assert '"PSP": ("get_psp", "PSP")' in app_source
+    assert '"SOLO": ("get_solo", "SOLO")' in app_source
+    assert '"STA": ("get_stereo_a", "STA")' in app_source
+    assert 'surf_frame = pd.merge(' in app_source
+    assert 'csv_text = surf_frame.to_csv(index=False)' in app_source
     assert "link.download = filename" in template
 
 
@@ -311,17 +328,30 @@ def test_ambient_source_radii_are_editable_with_existing_defaults():
     assert 'name="cortom_source_radius_rs" type="number" min="1" step="0.1" value="8"' in template
 
 
-def test_timeseries_is_default_plot_product_and_omni_is_earth_only():
+def test_timeseries_is_default_plot_product_and_offers_observer_data():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    app_source = Path("surfs_up/web/app.py").read_text(encoding="utf-8")
 
     assert 'class="inner-tab-button active" data-inner-tab="timeseries-product"' in template
     assert 'class="product-panel active wide" data-inner-panel="timeseries-product"' in template
     assert 'id="timeseries-plot-omni" type="checkbox" checked' in template
     assert 'plot_omni: document.getElementById("timeseries-plot-omni").checked' in template
-    assert 'timeseriesObserver.value === "Earth"' in template
+    assert '("ACE","ACE")' not in template
+    assert 'PSP: "Plot Parker Solar Probe data"' in template
+    assert 'SOLO: "Plot Solar Orbiter data"' in template
+    assert 'STA: "Plot STEREO-A data"' in template
+    assert "observationLabels[timeseriesObserver?.value]" in template
     assert 'sa.plot_earth_timeseries(model, plot_omni=True)' in template
     assert 'sa.plot_earth_timeseries(model, plot_omni=False)' in template
     assert 'OMNI may be unavailable for the requested dates.' in template
+    assert '"PSP": ("get_psp", "Parker Solar Probe")' in app_source
+    assert '"SOLO": ("get_solo", "Solar Orbiter")' in app_source
+    assert '"STA": ("get_stereo_a", "STEREO-A")' in app_source
+    assert 'figsize=(14, 3 * len(fields))' in app_source
+    assert 'axis.set_ylim(250, 1000)' in app_source
+    assert 'axis.set_ylim(0.101, 999)' in app_source
+    assert 'axis.set_ylim(1e4, 9.9e6)' in app_source
+    assert 'observations["datetime"],\n                                        values,\n                                        "k-"' in app_source
 
 
 def test_template_hides_post_run_tabs_when_run_becomes_stale():
@@ -442,6 +472,10 @@ def test_generated_code_dialog_has_copy_button():
     assert "navigator.clipboard.writeText(codeText)" in template
     assert "document.execCommand(\"copy\")" in template
     assert 'copyGeneratedCodeButton.addEventListener("click", copyGeneratedCode)' in template
+    assert 'generatedCodePre.textContent = "Generating code..."' in template
+    show_dialog = template.split("function showGeneratedCodeDialog()", 1)[1].split("}", 1)[0]
+    assert "updateGeneratedCode(true)" in show_dialog
+    assert "refreshGeneratedCodeDialog()" not in show_dialog
 
 
 def test_generated_code_endpoint_reflects_current_form_state():
@@ -692,13 +726,60 @@ def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):
     assert simulation.model["grab_donki_at_run_start"] is False
 
 
+def test_grab_donki_at_run_start_replaces_existing_cmes(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    monkeypatch.setattr(
+        web_app,
+        "_fetch_donki_cmes",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("DONKI must be fetched by the generated script")
+        ),
+    )
+    app = create_app({"TESTING": True})
+    with app.test_request_context(
+        "/",
+        method="POST",
+        data={
+            "action": "run",
+            "ambient_source": "wsa_iswa",
+            "grab_donki_at_run_start": "on",
+            "solver": "huxt",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "frame": "synodic",
+            "cmes_json": json.dumps(
+                [
+                    {"source": "manual", "speed": 800},
+                    {"source": "donki", "donki_id": "stale", "speed": 700},
+                ]
+            ),
+        },
+    ):
+        simulation = web_app._request_from_form()
+
+    assert simulation.cmes == []
+    assert simulation.model["grab_donki_at_run_start"] is True
+
+
 def test_run_displays_error_when_donki_cannot_be_accessed(monkeypatch):
     import surfs_up.web.app as web_app
 
-    def refuse_connection(*_args, **_kwargs):
-        raise URLError("connection refused")
-
-    monkeypatch.setattr(web_app, "urlopen", refuse_connection)
+    monkeypatch.setattr(
+        web_app,
+        "run_generated_code",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            success=False,
+            model=None,
+            message="SURF run failed: DONKI CME data could not be accessed",
+            output="connection refused",
+        ),
+    )
     monkeypatch.setattr(
         web_app,
         "_model_defaults",
@@ -851,6 +932,50 @@ def test_preview_donki_option_sets_codegen_flag_without_fetching(monkeypatch):
     assert simulation.cmes == []
 
 
+def test_explicit_code_generation_keeps_runtime_donki_query(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    monkeypatch.setattr(
+        web_app,
+        "_fetch_donki_cmes",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Show Code must not pre-download DONKI")
+        ),
+    )
+    app = create_app({"TESTING": True})
+    with app.test_request_context(
+        "/generated-code",
+        method="POST",
+        data={
+            "action": "generate_with_inputs",
+            "ambient_source": "wsa_iswa",
+            "grab_donki_at_run_start": "on",
+            "solver": "hydro",
+            "rmin": "21.5",
+            "rmax": "430",
+            "latitude": "0",
+            "simtime_days": "27",
+            "start_datetime": "2024-03-05T08:48",
+            "cr_num": "2282",
+            "cr_lon_init_deg": "0",
+            "frame": "synodic",
+        },
+    ):
+        simulation = web_app._request_from_form()
+
+    assert simulation.cmes == []
+    code = web_app.build_generated_code(simulation)
+    assert "sin.get_DONKI_cme_list" in code
+    assert "cme_0 = s.ConeCME(" not in code
+
+
+def test_show_generated_code_preserves_runtime_external_inputs():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert "updateGeneratedCode(true)" in template
+    assert 'formData.set("action", "preview")' in template
+
+
 def test_model_coordinate_endpoint_returns_synchronised_values():
     response = create_app({"TESTING": True}).test_client().get(
         "/model-coordinates?datetime=2026-07-03T12:00:00"
@@ -861,6 +986,24 @@ def test_model_coordinate_endpoint_returns_synchronised_values():
     assert payload["datetime"] == "2026-07-03T12:00:00"
     assert isinstance(payload["cr_num"], int)
     assert -90 <= payload["earth_latitude"] <= 90
+
+
+def test_model_coordinate_endpoint_updates_date_and_latitude_when_cr_changes():
+    client = create_app({"TESTING": True}).test_client()
+    first = client.get("/model-coordinates?cr_num=2282&cr_lon=0").get_json()
+    second = client.get("/model-coordinates?cr_num=2283&cr_lon=0").get_json()
+
+    assert first["datetime"] != second["datetime"]
+    assert math.isfinite(first["earth_latitude"])
+    assert math.isfinite(second["earth_latitude"])
+    assert first["earth_latitude"] != second["earth_latitude"]
+
+
+def test_carrington_controls_update_coordinates_while_editing():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert 'input.addEventListener("input"' in template
+    assert "window.setTimeout(updateCoordinatesFromCarrington, 250)" in template
 
 
 def test_ambient_file_time_endpoint_returns_inferred_timestamp(monkeypatch):

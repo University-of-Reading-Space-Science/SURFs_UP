@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "surfs-up"
 version = "0.1.0"
-description = "Desktop GUI for the SURF modelling framework"
+description = "Web interface for the SURF modelling framework"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -14,16 +14,11 @@ dependencies = [
   "numpy>=2.2.6",
   "sunpy[net,timeseries,visualization]>=7.0.1",
   "surf>=1.0.0",
+  "Flask>=3.1.0",
 ]
 
-[project.optional-dependencies]
-desktop = ["PyQt6>=6.7.1"]
-web = ["Flask>=3.1.0"]
-all = ["PyQt6>=6.7.1", "Flask>=3.1.0"]
-
 [project.scripts]
-surfs-up = "surfs_up.gui:main"
-surf-gui = "surfs_up.gui:main"
+surfs-up = "surfs_up.web.app:main"
 surfs-up-web = "surfs_up.web.app:main"
 
 [project.urls]

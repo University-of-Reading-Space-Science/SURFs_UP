@@ -1,4 +1,4 @@
-"""Execution services that do not depend on PyQt or Flask."""
+"""Framework-neutral execution services for generated SURF code."""
 
 from __future__ import annotations
 
@@ -71,10 +71,10 @@ def run_generated_code(
             output=output_stream.getvalue(),
             model=namespace.get("model"),
         )
-    except Exception:
+    except Exception as exc:
         output_stream.write(traceback.format_exc())
         return RunResult(
             success=False,
-            message="SURF run failed.",
+            message=f"SURF run failed: {exc}",
             output=output_stream.getvalue(),
         )

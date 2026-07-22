@@ -6,7 +6,7 @@ In pythonanywhere bash window:
 workon surfs-up
 cd /home/mathewjowens/SURFs_UP
 git pull
-pip install -e ".[web]"
+pip install -e .
 
 workon surfs-up
 cd /home/mathewjowens/SURF

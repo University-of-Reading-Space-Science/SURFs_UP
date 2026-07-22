@@ -1,4 +1,4 @@
-"""Framework-neutral application services shared by desktop and web UIs."""
+"""Framework-neutral application services used by the web interface."""
 
 from .models import SimulationRequest
 from .plotting import (

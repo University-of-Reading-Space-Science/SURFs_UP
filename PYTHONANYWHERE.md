@@ -24,7 +24,7 @@ cd /home/mathewjowens/SURF
 pip install --no-cache-dir -e .
 
 cd /home/mathewjowens/SURFs_UP
-pip install --no-cache-dir -e ".[web]"
+pip install --no-cache-dir -e .
 ```
 
 If PythonAnywhere is still on Python 3.12.8 and `SURF` requires `>=3.12.11`, patch the remote checkout before installing:
@@ -74,7 +74,7 @@ pip install -e .
 
 cd /home/mathewjowens/SURFs_UP
 git pull
-pip install -e ".[web]"
+pip install -e .
 ```
 
 Then reload the web app.
@@ -105,5 +105,5 @@ Expected:
 ## Troubleshooting reminders
 
 - After reloading the web app, open the site fresh and run SURF again. Old run IDs from before a reload may be invalid.
-- Missing `zeep`, `cdflib`, or `mpl_animators` means SunPy extras were not installed. `SURFs_UP` now depends on `sunpy[net,timeseries,visualization]`, so reinstall with `pip install -e ".[web]"`.
+- Missing `zeep`, `cdflib`, or `mpl_animators` means SunPy extras were not installed. `SURFs_UP` depends on `sunpy[net,timeseries,visualization]`, so reinstall with `pip install -e .`.
 - The Flask/Dash conflict warning from system packages is not relevant to this Flask app.

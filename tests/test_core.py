@@ -201,30 +201,9 @@ def test_general_generator_supports_cmes():
     assert "model.solve(cme_list" in code
 
 
-def test_generated_code_fetches_donki_at_runtime_when_requested():
+def test_generated_preview_fetches_donki_at_runtime_when_no_list_is_loaded():
     simulation = request()
     simulation.model["grab_donki_at_run_start"] = True
-    simulation.cmes.extend(
-        [
-            {
-                "t_launch_day": 0.25,
-                "longitude": 10,
-                "latitude": 2,
-                "speed": 900,
-                "width": 45,
-                "source": "donki",
-                "donki_id": "downloaded-at-run",
-            },
-            {
-                "t_launch_day": 0.5,
-                "longitude": 0,
-                "latitude": 0,
-                "speed": 800,
-                "width": 60,
-                "source": "manual",
-            },
-        ]
-    )
 
     code = build_generated_code(simulation)
 
@@ -232,8 +211,7 @@ def test_generated_code_fetches_donki_at_runtime_when_requested():
     assert "donki_cmes = sin.get_DONKI_cme_list(model, start_time, donki_end_time)" in code
     assert "if solver == 'hydro':" in code
     assert "donki_cme.profile_type = 'sinusoidal'" in code
-    assert "downloaded-at-run" not in code
-    assert code.count("s.ConeCME") == 1
+    assert code.count("s.ConeCME") == 0
 
 
 def test_generated_code_includes_preloaded_donki_list_when_runtime_fetch_is_off():
@@ -335,6 +313,7 @@ def test_generated_code_uses_parker_wsa_reduction_for_non_huxt():
     assert "v_boundary, 215*u.solRad, wsa_lon, rmin, gamma=gamma" in code
     assert "acc_profile=acc_profile, gamma=gamma" in code
     assert "model.set_gamma(gamma)" in code
+    assert "model.latitude = latitude.to(u.rad)" in code
     assert "v_boundary = wsa_reduction[0]" in code
 
 
@@ -367,6 +346,7 @@ def test_generated_code_uses_stereo_a_forecast_wrapper_and_longitude_range():
         "v_max=3000.0*(u.km/u.s)",
         "dt_scale=4",
         "solver=solver",
+        "gamma=gamma",
         "run_2d=True",
         "track_cmes=False",
         "include_b_boundary=False",
@@ -404,6 +384,8 @@ def test_generated_stereo_a_reconstruction_uses_stereo_wrapper():
     code = build_generated_code(simulation)
 
     assert "staSURF_reconstruction" in code
+    assert "gamma=gamma" in code
+    assert "model.set_gamma(gamma)" not in code
     assert "omni_input=" not in code
     assert "get_omni" not in code
     assert "icme_list='None'" in code
@@ -421,6 +403,8 @@ def test_generated_omni_functions_follow_include_bpol_selection():
     code = build_generated_code(simulation)
     assert "omniSURF_reconstruction" in code
     assert "include_b_boundary=True" in code
+    assert "gamma=gamma" in code
+    assert "model.set_gamma(gamma)" not in code
 
     simulation.model["include_bpol"] = False
     simulation.ambient = {"source": "omni", "use_215_inner_boundary": True}
@@ -428,6 +412,8 @@ def test_generated_omni_functions_follow_include_bpol_selection():
     code = build_generated_code(simulation)
     assert "omniSURF_1au_out" in code
     assert "include_b_boundary=False" in code
+    assert "gamma=gamma" in code
+    assert "model.set_gamma(gamma)" not in code
 
 
 def test_generated_omni_functions_pass_selected_icme_list():
@@ -464,3 +450,34 @@ def test_generated_omni_icme_list_has_date_based_default():
 
     simulation.model["start_datetime"] = "2026-01-01 00:00:00"
     assert "icme_list='DONKI'" in build_generated_code(simulation)
+
+
+def test_grab_donki_at_run_start_uses_runtime_query_and_discards_editor_list():
+    simulation = request()
+    simulation.model["grab_donki_at_run_start"] = True
+    simulation.cmes = [
+        {
+            "source": "donki",
+            "longitude": 20,
+            "latitude": -3,
+            "speed": 700,
+            "width": 50,
+            "t_launch_day": 0.25,
+            "thickness_rs": 0,
+            "initial_height_rs": 21.5,
+            "cme_expansion": False,
+            "cme_fixed_duration": True,
+            "fixed_duration_hr": 12,
+            "profile_type": "square",
+            "plasma_mode": "Fraction of ambient",
+            "density_fraction": 1,
+            "temperature_fraction": 1,
+        }
+    ]
+
+    code = build_generated_code(simulation)
+
+    assert "sin.get_DONKI_cme_list" in code
+    assert "cme_0 = s.ConeCME(" not in code
+    assert "cme_list.append(cme_0)" not in code
+    assert "model.solve(cme_list" in code

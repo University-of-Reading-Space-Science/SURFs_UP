@@ -75,7 +75,7 @@ def build_uniform_boundary_code(request: SimulationRequest) -> str:
     lines.extend(
         [
             f"    latitude={float(state['latitude'])} * u.deg,",
-            f"    frame={state.get('frame', 'sidereal')!r},",
+            f"    frame={state.get('frame', 'synodic')!r},",
             f"    simtime={float(state['simtime_days'])} * u.day,",
         f"    solver={solver!r},",
         "    dt_scale=4,",
@@ -287,7 +287,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"dr={float(state.get('dr_rs', 1.5))}*u.solRad, "
                     f"nlon={int(state.get('nlon', 128))}, "
                     f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s), "
-                    f"dt_scale=4, solver=solver, run_2d={not state.get('is_1d', False)}, "
+                    f"dt_scale=4, solver=solver, gamma=gamma, "
+                    f"run_2d={not state.get('is_1d', False)}, "
                     f"track_cmes={bool(state.get('track_cmes', False))}, "
                     f"include_b_boundary={include_bpol}"
                     f", icme_list={omni_icme_list!r}"
@@ -302,7 +303,7 @@ def build_generated_code(request: SimulationRequest) -> str:
                 ", lon_out=0*u.deg"
                 if state.get("is_1d")
                 else (
-                    f", frame={state.get('frame', 'sidereal')!r}"
+                    f", frame={state.get('frame', 'synodic')!r}"
                     f", lon_start={float(state.get('lon_min', 0))}*u.deg"
                     f", lon_stop={float(state.get('lon_max', 360))}*u.deg"
                 )
@@ -333,7 +334,8 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"dr={float(state.get('dr_rs', 1.5))}*u.solRad, "
                     f"nlon={int(state.get('nlon', 128))}, "
                     f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s), "
-                    f"dt_scale=4, solver=solver, run_2d={not state.get('is_1d', False)}, "
+                    f"dt_scale=4, solver=solver, gamma=gamma, "
+                    f"run_2d={not state.get('is_1d', False)}, "
                     f"track_cmes={bool(state.get('track_cmes', False))}, "
                     f"include_b_boundary={include_bpol}"
                     f", icme_list={omni_icme_list!r}"
@@ -349,7 +351,7 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"dr={float(state.get('dr_rs', 1.5))}*u.solRad, "
                     f"nlon={int(state.get('nlon', 128))}, "
                     f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s), "
-                    "dt_scale=4, latitude=latitude, solver=solver, "
+                    "dt_scale=4, latitude=latitude, solver=solver, gamma=gamma, "
                     f"track_cmes={bool(state.get('track_cmes', False))}"
                     + geometry
                     + (", bgrid_Carr=bcarr" if include_bpol else "")
@@ -376,7 +378,7 @@ def build_generated_code(request: SimulationRequest) -> str:
             f"nlon={int(state.get('nlon', 128))}",
             f"v_max={float(state.get('vmax_kms', 3000.0))}*(u.km/u.s)",
             "latitude=latitude",
-            f"frame={state.get('frame', 'sidereal')!r}",
+            f"frame={state.get('frame', 'synodic')!r}",
             "simtime=simtime",
             "dt_scale=4",
             "solver=solver",
@@ -395,8 +397,13 @@ def build_generated_code(request: SimulationRequest) -> str:
             )
         lines.append("model = s.SURF(" + ", ".join(args) + ")")
 
-    if solver != "huxt":
-        lines.extend(["", "model.set_gamma(gamma)"])
+    # Reconstruction helpers derive an observer latitude from ephemeris data. Keep the
+    # model plane tied to the latitude selected in the web form; a missing/undersampled
+    # ephemeris must not silently turn this into NaN and exclude every cone CME.
+    # SURF's boundary injector consumes model.latitude.value as radians.
+    lines.extend(["", "model.latitude = latitude.to(u.rad)"])
+    if solver != "huxt" and source not in {"insitu_backmapped", "omni"}:
+        lines.append("model.set_gamma(gamma)")
 
     lines.extend(
         [
@@ -409,18 +416,19 @@ def build_generated_code(request: SimulationRequest) -> str:
         lines.extend(
             [
                 "donki_end_time = start_time + datetime.timedelta(days=simtime.to_value(u.day))",
-                "donki_cmes = sin.get_DONKI_cme_list(model, start_time, donki_end_time)",
+                "try:",
+                "    donki_cmes = sin.get_DONKI_cme_list(model, start_time, donki_end_time)",
+                "except Exception as exc:",
+                "    raise RuntimeError('DONKI CME data could not be accessed') from exc",
+                "print(f'Loaded {len(donki_cmes)} DONKI cone CMEs for this run')",
                 "if solver == 'hydro':",
                 "    for donki_cme in donki_cmes:",
                 "        donki_cme.profile_type = 'sinusoidal'",
                 "cme_list.extend(donki_cmes)",
             ]
         )
-    literal_cmes = [
-        cme
-        for cme in cmes
-        if not (state.get("grab_donki_at_run_start") and cme.get("source") == "donki")
-    ]
+    # "Grab at run start" replaces the editor contents with a fresh runtime query.
+    literal_cmes = [] if state.get("grab_donki_at_run_start") else cmes
     for index, cme in enumerate(literal_cmes):
         plasma = (
             [

@@ -235,7 +235,7 @@
         <span class="pb-2 text-sm font-medium text-slate-600">Model latitude (deg; defaults to Earth)</span>
         <label><span class="sr-only">Model latitude in degrees</span><input name="latitude" id="model-latitude" type="number" step="0.1" value="{{ '%.2f'|format(default_latitude) }}"></label>
         <span class="pb-2 text-sm font-medium text-slate-600">Frame</span>
-        <label><span class="sr-only">Coordinate frame</span><select name="frame"><option value="sidereal">Sidereal (recommended for 2D runs)</option><option value="synodic">Synodic (recommended for 1D runs)</option></select></label>
+        <label><span class="sr-only">Coordinate frame</span><select name="frame"><option value="synodic">Synodic (recommended for 1D runs)</option><option value="sidereal">Sidereal (recommended for 2D runs)</option></select></label>
       </div>
       <div class="mt-4 grid items-end gap-3 lg:grid-cols-[minmax(16rem,auto)_1fr]">
         <label class="pb-2"><span><input name="is_1d" id="model-is-1d" type="checkbox" checked> Run as 1D (single longitude)</span></label>
@@ -546,12 +546,12 @@
               <label for="timeseries-observer" class="text-sm font-medium text-slate-700">Location</label>
               <select id="timeseries-observer">
                 {% for value, label in [("Earth","Earth"),("Mercury","Mercury"),("Venus","Venus"),
-                  ("Mars","Mars"),("Jupiter","Jupiter"),("Saturn","Saturn"),("ACE","ACE"),
+                  ("Mars","Mars"),("Jupiter","Jupiter"),("Saturn","Saturn"),
                   ("PSP","Parker Solar Probe"),("SOLO","Solar Orbiter"),("STA","STEREO-A"),
                   ("STB","STEREO-B"),("ULYSSES","Ulysses"),("custom","Custom coordinates")] %}
                 <option value="{{ value }}">{{ label }}</option>{% endfor %}
               </select>
-              <label id="timeseries-omni-option"><span><input id="timeseries-plot-omni" type="checkbox" checked> Plot OMNI</span></label>
+              <label id="timeseries-insitu-option"><span><input id="timeseries-plot-omni" type="checkbox" checked> <span id="timeseries-insitu-label">Plot OMNI</span></span></label>
             </div>
             <p class="text-sm text-slate-500">Standard locations follow each observer's ephemeris throughout the run. Custom longitude is fixed on the SURF model grid: HEEQ/model longitude at run start for sidereal runs, or corotating model longitude for synodic runs.</p>
             <div class="hidden grid-cols-1 items-end gap-3 sm:grid-cols-[10rem_1fr_1fr]" id="timeseries-custom-coordinates">
@@ -647,6 +647,7 @@
           timeseries_lon: document.getElementById("timeseries-lon").value,
           observer: document.getElementById("timeseries-observer").value,
           plot_omni: document.getElementById("timeseries-plot-omni").checked ? "1" : "0",
+          plot_insitu: document.getElementById("timeseries-plot-omni").checked ? "1" : "0",
           radius: document.getElementById("plot-radius").value,
           minimal: document.getElementById("map-minimal").checked ? "1" : "0",
           plot_hcs: document.getElementById("map-hcs").checked ? "1" : "0",
@@ -718,34 +719,56 @@
             failTask(button);
           });
       }
-      function downloadTimeseries(button = null) {
+      async function downloadTimeseries(button = null) {
         const observer = document.getElementById("timeseries-observer").value;
-        let filename = window.prompt("CSV filename", `SURF_${observer}_timeseries.csv`);
-        if (filename === null) return;
-        filename = filename.trim();
-        if (!filename) filename = `SURF_${observer}_timeseries.csv`;
-        if (!filename.toLowerCase().endsWith(".csv")) filename += ".csv";
+        const filename = `SURF_${observer}_timeseries.csv`;
+        let fileHandle = null;
+        if (window.showSaveFilePicker) {
+          try {
+            fileHandle = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [{
+                description: "CSV time-series data",
+                accept: {"text/csv": [".csv"]}
+              }]
+            });
+          } catch (error) {
+            if (error.name === "AbortError") return;
+            fileHandle = null;
+          }
+        }
         const csvUrl = `${runBase}/timeseries.csv?${new URLSearchParams(values())}`;
         beginTask(button, "Exporting CSV...");
-        fetch(csvUrl)
-          .then(async response => {
-            if (!response.ok) throw new Error(await response.text());
-            return response.blob();
-          })
-          .then(blob => {
+        document.getElementById("product-status").textContent =
+          "Preparing CSV data. The first spacecraft-data download may take a while...";
+        try {
+          const response = await fetch(csvUrl, {cache: "no-store"});
+          if (!response.ok) throw new Error(await response.text());
+          const csvText = await response.text();
+          if (!csvText.trim() || !csvText.includes("SURF_")) {
+            throw new Error("The server returned no SURF time-series values.");
+          }
+          const blob = new Blob([csvText], {type: "text/csv;charset=utf-8"});
+          if (fileHandle) {
+            const writable = await fileHandle.createWritable({keepExistingData: false});
+            await writable.write(csvText);
+            await writable.close();
+          } else {
             const objectUrl = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = objectUrl;
             link.download = filename;
             link.click();
             URL.revokeObjectURL(objectUrl);
-            finishTask(button, "CSV Ready");
-          })
-          .catch(error => {
-            document.getElementById("product-status").textContent =
-              `CSV export failed: ${error.message}`;
-            failTask(button);
-          });
+          }
+          document.getElementById("product-status").textContent =
+            `CSV saved with ${csvText.split(/\r?\n/).filter(Boolean).length - 1} data row(s).`;
+          finishTask(button, "CSV Ready");
+        } catch (error) {
+          document.getElementById("product-status").textContent =
+            `CSV export failed: ${error.message}`;
+          failTask(button);
+        }
       }
       function downloadMovie(kind = "map", button = null) {
         const withTimeseries = kind === "timeseries";
@@ -939,7 +962,7 @@
       let codeText = baseGeneratedCodeText;
       if (plotCodeHistory.length) {
         codeText +=
-          "\n\n# Plotting code run from the GUI\n" +
+          "\n\n# Plotting code run from the web interface\n" +
           "import matplotlib.pyplot as plt\n" +
           "import surf.surf_analysis as sa\n\n" +
           plotCodeHistory.join("\n\n") +
@@ -956,8 +979,9 @@
     async function updateGeneratedCode(showBusy = false) {
       if (!generatedCodePre || !runForm) return;
       const requestId = ++generatedCodeRequestId;
-      if (showBusy && !baseGeneratedCodeText) {
+      if (showBusy) {
         generatedCodePre.textContent = "Generating code...";
+        if (copyGeneratedCodeButton) copyGeneratedCodeButton.disabled = true;
       }
       const formData = new FormData(runForm);
       formData.set("action", "preview");
@@ -978,6 +1002,10 @@
         if (requestId !== generatedCodeRequestId) return;
         baseGeneratedCodeText = `# Could not generate code for the current settings.\n# ${error.message}`;
         refreshGeneratedCodeDialog();
+      } finally {
+        if (showBusy && requestId === generatedCodeRequestId && copyGeneratedCodeButton) {
+          copyGeneratedCodeButton.disabled = false;
+        }
       }
     }
 
@@ -1125,19 +1153,31 @@
             "plt.show()",
           ].join("\n");
         }
-        return [
+        const lines = [
           "# Sample the moving observer and plot the available model variables.",
           `time_series = sa.get_observer_timeseries(model, observer=${JSON.stringify(observer)})`,
-          "# Use the downloaded observer series to generate the time-series plot.",
-          "plt.show()",
-        ].join("\n");
+        ];
+        const observationGrabbers = {
+          PSP: "get_psp",
+          SOLO: "get_solo",
+          STA: "get_stereo_a"
+        };
+        const grabber = observationGrabbers[observer];
+        if (grabber && document.getElementById("timeseries-plot-omni").checked) {
+          lines.push(
+            "import surf.surf_insitu as sinsit",
+            `observations = sinsit.${grabber}(time_series['time'].iloc[0], time_series['time'].iloc[-1])`,
+            "# Overlay observations on the corresponding SURF time-series panels.",
+          );
+        }
+        lines.push("plt.show()");
+        return lines.join("\n");
       }
       return "";
     }
 
     function showGeneratedCodeDialog() {
       updateGeneratedCode(true);
-      refreshGeneratedCodeDialog();
       if (generatedCodeDialog) generatedCodeDialog.showModal();
     }
 
@@ -1963,12 +2003,21 @@
       iswaMapDate.addEventListener("change", syncModelStartFromIswaMapDate);
       if (!restoredPreRunConfiguration) syncIswaMapDateState();
     }
+    let coordinateUpdateTimer;
+    function updateCoordinatesFromCarrington() {
+      updateCoordinates({
+        cr_num: modelCrNumber.value,
+        cr_lon: modelCrLongitude.value
+      }).catch(console.error);
+    }
     [modelCrNumber, modelCrLongitude].forEach(input => {
+      input.addEventListener("input", () => {
+        window.clearTimeout(coordinateUpdateTimer);
+        coordinateUpdateTimer = window.setTimeout(updateCoordinatesFromCarrington, 250);
+      });
       input.addEventListener("change", () => {
-        updateCoordinates({
-          cr_num: modelCrNumber.value,
-          cr_lon: modelCrLongitude.value
-        }).catch(console.error);
+        window.clearTimeout(coordinateUpdateTimer);
+        updateCoordinatesFromCarrington();
       });
     });
     if (modelIs1D) {
@@ -2102,12 +2151,20 @@
     });
 
     const timeseriesObserver = document.getElementById("timeseries-observer");
-    const timeseriesOmniOption = document.getElementById("timeseries-omni-option");
+    const timeseriesInsituOption = document.getElementById("timeseries-insitu-option");
+    const timeseriesInsituLabel = document.getElementById("timeseries-insitu-label");
     const customTimeseriesCoordinates = document.getElementById("timeseries-custom-coordinates");
     function syncTimeseriesLocation() {
       const custom = timeseriesObserver && timeseriesObserver.value === "custom";
-      const earth = timeseriesObserver && timeseriesObserver.value === "Earth";
-      if (timeseriesOmniOption) timeseriesOmniOption.classList.toggle("hidden", !earth);
+      const observationLabels = {
+        Earth: "Plot OMNI",
+        PSP: "Plot Parker Solar Probe data",
+        SOLO: "Plot Solar Orbiter data",
+        STA: "Plot STEREO-A data"
+      };
+      const observationLabel = observationLabels[timeseriesObserver?.value];
+      if (timeseriesInsituOption) timeseriesInsituOption.classList.toggle("hidden", !observationLabel);
+      if (timeseriesInsituLabel && observationLabel) timeseriesInsituLabel.textContent = observationLabel;
       if (customTimeseriesCoordinates) {
         customTimeseriesCoordinates.classList.toggle("hidden", !custom);
         customTimeseriesCoordinates.classList.toggle("grid", custom);

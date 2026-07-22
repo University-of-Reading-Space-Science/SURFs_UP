@@ -1,4 +1,4 @@
-"""Plotting helpers shared by the desktop and web interfaces."""
+"""Plotting helpers used by the SURFs_UP web interface."""
 
 from __future__ import annotations
 
