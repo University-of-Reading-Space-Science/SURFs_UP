@@ -17,10 +17,11 @@ import time
 import uuid
 from collections import OrderedDict
 from pathlib import Path
+from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-from flask import Flask, abort, jsonify, render_template, request, send_file, session
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from surfs_up.core import (
     SimulationRequest,
@@ -38,6 +39,10 @@ _RUNS_LOCK = threading.Lock()
 _RUN_PROGRESS: OrderedDict[str, str] = OrderedDict()
 _RUN_PROGRESS_LOCK = threading.Lock()
 _PLOT_LOCK = threading.Lock()
+
+
+class DonkiAccessError(RuntimeError):
+    """Raised when NASA DONKI cannot be reached for CME data."""
 _SURF_RUN_LOCK = threading.Lock()
 _MAX_RETAINED_RUNS = 8
 _RUN_CACHE_DIR = Path(
@@ -248,8 +253,15 @@ def _fetch_donki_cmes(
             "catalog": "ALL",
         }
     )
-    with urlopen(f"{_DONKI_URL}?{query}", timeout=30) as response:
-        analyses = json.load(response)
+    try:
+        with urlopen(f"{_DONKI_URL}?{query}", timeout=30) as response:
+            analyses = json.load(response)
+    except (URLError, TimeoutError) as exc:
+        raise DonkiAccessError(
+            "DONKI CME data could not be accessed. Check your network connection "
+            "or try again later. You can run without DONKI data by unticking "
+            "'Grab DONKI CMEs at run start'."
+        ) from exc
     results = []
     for analysis in analyses:
         launch_text = analysis.get("time21_5")
@@ -792,8 +804,26 @@ def _request_from_form() -> SimulationRequest:
                 start = (map_time - datetime.timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
     elif source == "insitu_backmapped":
         ambient["mode"] = request.form.get("insitu_mode", "forecast")
+        spacecraft = request.form.get("insitu_spacecraft", "OMNI")
+        ambient["spacecraft"] = (
+            spacecraft if spacecraft in {"OMNI", "STEREO-A"} else "OMNI"
+        )
         ambient["forecast_datetime"] = request.form.get("omni_forecast_datetime", "")
-        ambient["icme_list"] = request.form.get("omni_icme_list", "None")
+        requested_icme_list = request.form.get("omni_icme_list", "")
+        allowed_icme_lists = (
+            {"STEREO-A", "None"}
+            if ambient["spacecraft"] == "STEREO-A"
+            else {"CaneRichardson", "DONKI", "None"}
+        )
+        ambient["icme_list"] = (
+            requested_icme_list
+            if requested_icme_list in allowed_icme_lists
+            else ("STEREO-A" if ambient["spacecraft"] == "STEREO-A" else "None")
+        )
+        icme_buffer_days = _float("insitu_icme_buffer_days", 2.0)
+        if icme_buffer_days < 0:
+            raise ValueError("ICME buffer must be zero or greater.")
+        ambient["icme_buffer_days"] = icme_buffer_days
     elif source == "omni":
         ambient["use_215_inner_boundary"] = "use_215_inner_boundary" in request.form
         ambient["icme_list"] = request.form.get("omni_icme_list", "None")
@@ -963,7 +993,6 @@ def create_app(config: dict | None = None) -> Flask:
             "run_id": None,
             "show_movies": False,
             "show_code_dialog": False,
-            "submitted_cmes": None,
         }
         if request.method == "POST":
             try:
@@ -972,7 +1001,6 @@ def create_app(config: dict | None = None) -> Flask:
                 action = request.form.get("action")
                 context["show_code_dialog"] = action == "preview"
                 if action == "run":
-                    context["submitted_cmes"] = _json_safe(simulation.cmes)
                     progress_id = request.form.get("progress_id", "")
                     _set_run_progress(progress_id, "Grabbing and processing input data")
                     with _SURF_RUN_LOCK:
@@ -989,7 +1017,12 @@ def create_app(config: dict | None = None) -> Flask:
                         context["show_movies"] = not bool(
                             simulation.model.get("is_1d", False)
                         )
-            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            except (
+                DonkiAccessError,
+                json.JSONDecodeError,
+                TypeError,
+                ValueError,
+            ) as exc:
                 context["error"] = str(exc)
         return render_template("index.html", **context, **_model_defaults())
 
@@ -1138,9 +1171,12 @@ def create_app(config: dict | None = None) -> Flask:
     def donki_cmes():
         start = datetime.datetime.fromisoformat(request.args["start"].replace("T", " "))
         duration = float(request.args.get("duration", 10))
-        return jsonify(
-            _fetch_donki_cmes(start, duration, request.args.get("solver", "huxt"))
-        )
+        try:
+            return jsonify(
+                _fetch_donki_cmes(start, duration, request.args.get("solver", "huxt"))
+            )
+        except DonkiAccessError as exc:
+            abort(502, str(exc))
 
     @app.get("/runs/<run_id>/timeseries.csv")
     def timeseries_csv(run_id: str):
@@ -1173,7 +1209,7 @@ def create_app(config: dict | None = None) -> Flask:
             download_name=f"SURF_{observer}_timeseries.csv",
         )
 
-    @app.get("/runs/<run_id>/movie/<kind>.gif")
+    @app.get("/runs/<run_id>/movie/<kind>.mp4")
     def movie(run_id: str, kind: str):
         import surf.surf_analysis as sa
 
@@ -1181,7 +1217,7 @@ def create_app(config: dict | None = None) -> Flask:
         duration = float(request.args.get("duration", 10))
         fps = int(request.args.get("fps", 5))
         with tempfile.TemporaryDirectory() as directory, _PLOT_LOCK:
-            path = Path(directory) / "surf_movie.gif"
+            path = Path(directory) / "surf_movie.mp4"
             options = {
                 "tag": request.args.get("tag", "gui"),
                 "duration": duration,
@@ -1199,6 +1235,7 @@ def create_app(config: dict | None = None) -> Flask:
                 animation = sa.animate
             elif kind == "timeseries":
                 options["polar_var"] = request.args.get("field", "V")
+                options["plot_omni"] = request.args.get("plot_omni", "1") == "1"
                 animation = sa.animate_with_ts
             else:
                 abort(404)
@@ -1219,18 +1256,24 @@ def create_app(config: dict | None = None) -> Flask:
             saved = animation(model, **supported_options)
             movie_path = Path(saved) if saved else path
             payload = io.BytesIO(movie_path.read_bytes())
+            movie_is_gif = movie_path.suffix.lower() == ".gif"
         payload.seek(0)
         return send_file(
             payload,
-            mimetype="image/gif",
+            mimetype="image/gif" if movie_is_gif else "video/mp4",
             as_attachment=request.args.get("inline") != "1",
-            download_name=f"SURF_{run_id[:8]}.gif",
+            download_name=f"SURF_{run_id[:8]}.{'gif' if movie_is_gif else 'mp4'}",
         )
+
+    @app.get("/runs/<run_id>/movie/<kind>.gif")
+    def legacy_kind_movie(run_id: str, kind: str):
+        """Redirect old per-kind GIF URLs to the default MP4 renderer."""
+        return redirect(url_for("movie", run_id=run_id, kind=kind, **request.args))
 
     @app.get("/runs/<run_id>/movie.gif")
     def legacy_movie(run_id: str):
         """Keep old bookmarked movie URLs working."""
-        return movie(run_id, "map")
+        return redirect(url_for("movie", run_id=run_id, kind="map", **request.args))
 
     return app
 

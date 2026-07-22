@@ -1482,7 +1482,7 @@ class MoviesTab(QWidget):
 
         self.movie_output_edit = QLineEdit()
         self.movie_output_edit.setReadOnly(True)
-        self.movie_output_edit.setPlaceholderText("Use default SURF figures path (.gif)")
+        self.movie_output_edit.setPlaceholderText("Use default SURF figures path (.mp4)")
         self.movie_output_button = QPushButton("Select output")
         self.movie_output_button.clicked.connect(self._select_output_path_2d)
         self.movie_clear_output_button = QPushButton("Clear")
@@ -1535,6 +1535,9 @@ class MoviesTab(QWidget):
         self.movie_ts_plot_hcs_toggle = QCheckBox("Plot HCS")
         self.movie_ts_plot_hcs_toggle.setChecked(True)
 
+        self.movie_ts_plot_omni_toggle = QCheckBox("Plot OMNI")
+        self.movie_ts_plot_omni_toggle.setChecked(True)
+
         self.movie_ts_limit_rmax_toggle = QCheckBox("Limit outer radius")
         self.movie_ts_limit_rmax_toggle.toggled.connect(self._on_movie_ts_limit_rmax_toggled)
         self.movie_ts_rmax_spin = QDoubleSpinBox()
@@ -1566,6 +1569,8 @@ class MoviesTab(QWidget):
         ts_toggles_layout.setContentsMargins(0, 0, 0, 0)
         ts_toggles_layout.addWidget(self.movie_ts_plot_hcs_toggle)
         ts_toggles_layout.addSpacing(12)
+        ts_toggles_layout.addWidget(self.movie_ts_plot_omni_toggle)
+        ts_toggles_layout.addSpacing(12)
         ts_toggles_layout.addWidget(self.movie_ts_limit_rmax_toggle)
         ts_toggles_layout.addWidget(self.movie_ts_rmax_spin)
         ts_toggles_layout.addStretch(1)
@@ -1581,7 +1586,7 @@ class MoviesTab(QWidget):
 
         self.movie_ts_output_edit = QLineEdit()
         self.movie_ts_output_edit.setReadOnly(True)
-        self.movie_ts_output_edit.setPlaceholderText("Use default SURF figures path (.gif)")
+        self.movie_ts_output_edit.setPlaceholderText("Use default SURF figures path (.mp4)")
         self.movie_ts_output_button = QPushButton("Select output")
         self.movie_ts_output_button.clicked.connect(self._select_output_path_ts)
         self.movie_ts_clear_output_button = QPushButton("Clear")
@@ -1644,15 +1649,15 @@ class MoviesTab(QWidget):
             self,
             "Select movie output",
             start_dir,
-            "GIF animation (*.gif);;MP4 video (*.mp4)",
+            "MP4 video (*.mp4);;GIF animation (*.gif)",
         )
         if filepath:
             lower_path = filepath.lower()
             if not lower_path.endswith((".gif", ".mp4")):
-                if "MP4" in selected_filter:
-                    filepath += ".mp4"
-                else:
+                if "GIF" in selected_filter:
                     filepath += ".gif"
+                else:
+                    filepath += ".mp4"
             target_edit.setText(filepath)
 
     def _select_output_path_2d(self):
@@ -2858,7 +2863,7 @@ class SurfMainWindow(QMainWindow):
             return Path(explicit_path)
 
         cr_num = np.int32(self.last_model.cr_num.value)
-        filename = f"SURF_CR{cr_num:03d}_{tag}_movie.gif"
+        filename = f"SURF_CR{cr_num:03d}_{tag}_movie.mp4"
         return sa.get_figure_dir().joinpath(filename)
 
     def _play_movie_file(self, filepath: Path):
@@ -3364,6 +3369,7 @@ class SurfMainWindow(QMainWindow):
             "duration": self.movies_tab.movie_ts_duration_spin.value(),
             "fps": self.movies_tab.movie_ts_fps_spin.value(),
             "plotHCS": self.movies_tab.movie_ts_plot_hcs_toggle.isChecked(),
+            "plot_omni": self.movies_tab.movie_ts_plot_omni_toggle.isChecked(),
             "outputfilepath": str(output_path),
             "plot_rmax": plot_rmax,
             "polar_var": polar_var,

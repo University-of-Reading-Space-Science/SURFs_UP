@@ -230,10 +230,14 @@ def build_generated_code(request: SimulationRequest) -> str:
     elif source in {"insitu_backmapped", "omni"}:
         lines.insert(6, "import surf.surf_insitu as sinsit")
         if source == "insitu_backmapped":
+            spacecraft = ambient.get("spacecraft", "OMNI")
+            if spacecraft == "STEREO-A" and "icme_list" not in ambient:
+                omni_icme_list = "STEREO-A"
+            function_prefix = "staSURF" if spacecraft == "STEREO-A" else "omniSURF"
             fn = (
-                "omniSURF_reconstruction"
+                f"{function_prefix}_reconstruction"
                 if ambient.get("mode") == "reconstruction"
-                else "omniSURF_forecast"
+                else f"{function_prefix}_forecast"
             )
             forecast_datetime = ambient.get("forecast_datetime")
             forecast_time = (
@@ -257,9 +261,26 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f", lon_start={float(state.get('lon_min', 0))}*u.deg, "
                     f"lon_stop={float(state.get('lon_max', 360))}*u.deg"
                 )
-            if omni_icme_list == "None":
+            if spacecraft == "OMNI":
                 lines.extend(_raw_omni_gap_fill_lines(raw_omni_start, raw_omni_end))
-            omni_input_arg = ", omni_input=omni_input" if omni_icme_list == "None" else ""
+                if omni_icme_list != "None":
+                    icme_buffer_days = float(ambient.get("icme_buffer_days", 2.0))
+                    lines.append(
+                        "omni_input = sinsit.removeICMEs("
+                        f"omni_input, icme_list={omni_icme_list!r}, "
+                        f"pre_icme_buffer={icme_buffer_days}, "
+                        f"post_icme_buffer={icme_buffer_days})"
+                    )
+            omni_input_arg = (
+                ", omni_input=omni_input"
+                if spacecraft == "OMNI"
+                else ""
+            )
+            icme_buffer_arg = (
+                f", icme_buffer={float(ambient.get('icme_buffer_days', 2.0))}*u.day"
+                if spacecraft == "STEREO-A"
+                else ""
+            )
             lines.extend(
                 [
                     f"model = sinsit.{fn}({call_start}, {second}, rmin=rmin, rmax=rmax, "
@@ -270,6 +291,7 @@ def build_generated_code(request: SimulationRequest) -> str:
                     f"track_cmes={bool(state.get('track_cmes', False))}, "
                     f"include_b_boundary={include_bpol}"
                     f", icme_list={omni_icme_list!r}"
+                    f"{icme_buffer_arg}"
                     f"{omni_input_arg}"
                     f"{longitude_args})"
                 ]

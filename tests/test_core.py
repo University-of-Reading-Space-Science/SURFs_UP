@@ -338,7 +338,7 @@ def test_generated_code_uses_parker_wsa_reduction_for_non_huxt():
     assert "v_boundary = wsa_reduction[0]" in code
 
 
-def test_generated_code_passes_longitude_range_to_omni_backmapped():
+def test_generated_code_uses_stereo_a_forecast_wrapper_and_longitude_range():
     simulation = request()
     simulation.model["lon_min"] = 120.0
     simulation.model["lon_max"] = 240.0
@@ -346,16 +346,68 @@ def test_generated_code_passes_longitude_range_to_omni_backmapped():
         "source": "insitu_backmapped",
         "mode": "forecast",
         "forecast_datetime": "2024-05-11 00:00:00",
+        "spacecraft": "STEREO-A",
+        "icme_buffer_days": 3.5,
     }
 
     code = build_generated_code(simulation)
 
     compile(code, "<generated>", "exec")
-    assert "omniSURF_forecast" in code
+    assert "staSURF_forecast" in code
     assert "datetime.datetime.fromisoformat('2024-05-11 00:00:00')" in code
     assert "simtime=simtime, buffertime=5*u.day" in code
+    assert "spacecraft=" not in code
+    assert "icme_list='STEREO-A'" in code
+    assert "icme_buffer=3.5*u.day" in code
+    for shared_parameter in (
+        "rmin=rmin",
+        "rmax=rmax",
+        "dr=1.5*u.solRad",
+        "nlon=128",
+        "v_max=3000.0*(u.km/u.s)",
+        "dt_scale=4",
+        "solver=solver",
+        "run_2d=True",
+        "track_cmes=False",
+        "include_b_boundary=False",
+    ):
+        assert shared_parameter in code
     assert "lon_start=120.0*u.deg" in code
     assert "lon_stop=240.0*u.deg" in code
+
+
+def test_generated_omni_forecast_does_not_pass_spacecraft_argument():
+    simulation = request()
+    simulation.ambient = {
+        "source": "insitu_backmapped",
+        "mode": "forecast",
+        "spacecraft": "OMNI",
+    }
+
+    code = build_generated_code(simulation)
+
+    assert "omniSURF_forecast" in code
+    assert "spacecraft=" not in code
+    assert "staSURF_forecast" not in code
+
+
+def test_generated_stereo_a_reconstruction_uses_stereo_wrapper():
+    simulation = request()
+    simulation.ambient = {
+        "source": "insitu_backmapped",
+        "mode": "reconstruction",
+        "spacecraft": "STEREO-A",
+        "icme_list": "None",
+        "icme_buffer_days": 1.25,
+    }
+
+    code = build_generated_code(simulation)
+
+    assert "staSURF_reconstruction" in code
+    assert "omni_input=" not in code
+    assert "get_omni" not in code
+    assert "icme_list='None'" in code
+    assert "icme_buffer=1.25*u.day" in code
 
 
 def test_generated_omni_functions_follow_include_bpol_selection():
@@ -384,8 +436,12 @@ def test_generated_omni_functions_pass_selected_icme_list():
         "source": "insitu_backmapped",
         "mode": "forecast",
         "icme_list": "DONKI",
+        "icme_buffer_days": 2.5,
     }
-    assert "icme_list='DONKI'" in build_generated_code(simulation)
+    code = build_generated_code(simulation)
+    assert "icme_list='DONKI'" in code
+    assert "pre_icme_buffer=2.5, post_icme_buffer=2.5" in code
+    assert "omni_input=omni_input" in code
 
     simulation.ambient = {
         "source": "omni",

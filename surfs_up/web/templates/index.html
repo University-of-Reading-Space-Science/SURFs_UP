@@ -283,7 +283,7 @@
     <div class="inner-tabs wide" id="ambient-source-tabs">
       {% for value, label in [
         ("mas", "MAS (PredSci)"), ("wsa_iswa", "WSA (ISWA)"),
-        ("omni_group", "OMNI"), ("user_specified_group", "User specified")
+        ("omni_group", "In SItu"), ("user_specified_group", "User specified")
       ] %}
       <button type="button" class="inner-tab-button ambient-tab-button {% if value == 'wsa_iswa' %}active{% endif %}"
               data-ambient-tab="{{ value }}">{{ label }}</button>
@@ -314,20 +314,26 @@
       <div class="mt-4"><button type="button" onclick="showAmbientPlot(this)">Plot WSA input</button></div>
     </fieldset>
     <fieldset class="group-box source-panel" data-source-panel="omni_group">
-      <legend class="group-title px-1">OMNI boundary</legend>
+      <legend class="group-title px-1">In SItu boundary conditions</legend>
       <div class="inner-tabs" data-inner-tabs="omni-boundaries">
         <button type="button" class="inner-tab-button active" data-inner-tab="omni-backmapped"
                 data-omni-source="insitu_backmapped">Backmapped boundary</button>
         <button type="button" class="inner-tab-button" data-inner-tab="omni-outwards"
                 data-omni-source="omni">Run from 1 AU outwards</button>
       </div>
-      <label class="mb-4">Remove ICMEs using
-        <select name="omni_icme_list" id="omni-icme-list">
-          <option value="None">None</option>
-          <option value="CaneRichardson">CaneRichardson</option>
-          <option value="DONKI">DONKI</option>
-        </select>
-      </label>
+      <div class="mb-4 flex flex-wrap items-end gap-3">
+        <label>Remove ICMEs using
+          <select name="omni_icme_list" id="omni-icme-list">
+            <option value="None">None</option>
+            <option value="CaneRichardson">CaneRichardson</option>
+            <option value="DONKI">DONKI</option>
+          </select>
+        </label>
+        <label id="insitu-icme-buffer-label">ICME buffer (days)
+          <input name="insitu_icme_buffer_days" id="insitu-icme-buffer-days"
+                 type="number" min="0" step="0.25" value="2">
+        </label>
+      </div>
       <div>
         <section class="product-panel active rounded-xl border border-slate-200 bg-white p-4"
                  data-inner-panel="omni-backmapped">
@@ -338,6 +344,10 @@
             <label>Mode <select name="insitu_mode" id="insitu-mode">
               <option value="forecast">Forecast</option>
               <option value="reconstruction">Reconstruction (requires 27 days of data after run end time)</option>
+            </select></label>
+            <label>Spacecraft <select name="insitu_spacecraft" id="insitu-spacecraft">
+              <option value="OMNI" selected>OMNI</option>
+              <option value="STEREO-A">STEREO-A</option>
             </select></label>
             <label>Forecast time<input name="omni_forecast_datetime" id="omni-forecast-datetime" type="datetime-local" step="1"></label>
           </div>
@@ -597,6 +607,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-4">
               <label id="movie-ts-hcs-label" class="opacity-50"><span><input id="movie-ts-hcs" type="checkbox" checked disabled> Plot HCS</span></label>
+              <label><span><input id="movie-ts-omni" type="checkbox" checked> Plot OMNI</span></label>
               <label><span><input id="movie-ts-limit-rmax" type="checkbox"> Limit outer radius (Rs)</span></label>
               <input class="max-w-40" aria-label="Time-series movie outer radius in solar radii" id="movie-ts-rmax"
                      type="number" min="1" max="5000" value="240" step="5" disabled>
@@ -748,14 +759,15 @@
           plot_rmax: document.getElementById(`${prefix}-limit-rmax`).checked
             ? document.getElementById(`${prefix}-rmax`).value : "",
           field: document.getElementById("movie-ts-field").value,
+          plot_omni: withTimeseries && document.getElementById("movie-ts-omni").checked ? "1" : "0",
           inline: "0"
         });
-        document.getElementById(`${prefix}-output`).value = `SURF_${tag}_movie.gif`;
+        document.getElementById(`${prefix}-output`).value = `SURF_${tag}_movie.mp4`;
         const movieStatus = document.getElementById("movie-status");
         beginTask(button, "Rendering movie...");
         movieStatus.textContent =
           "Rendering movie frames. This may take several minutes; please wait...";
-        const movieUrl = `${runBase}/movie/${kind}.gif?${movieQuery}`;
+        const movieUrl = `${runBase}/movie/${kind}.mp4?${movieQuery}`;
         document.getElementById("plot-output").classList.remove("hidden");
         fetch(movieUrl)
           .then(async response => {
@@ -764,10 +776,13 @@
           })
           .then(async blob => {
             const timestamp = new Date();
+            const isGifFallback = blob.type === "image/gif";
+            const extension = isGifFallback ? "gif" : "mp4";
             const entry = {
               caption: `${withTimeseries ? "Time-series" : "2D"} movie generated ${timestamp.toLocaleTimeString()}`,
               alt: `${withTimeseries ? "Time-series" : "2D"} SURF movie`,
-              filename: `SURF_${tag}_movie.gif`,
+              filename: `SURF_${tag}_movie.${extension}`,
+              mediaType: isGifFallback ? "image" : "video",
               src: await blobToDataUrl(blob)
             };
             addPlotOutput(entry);
@@ -845,13 +860,18 @@
       downloadLink.href = entry.src;
       downloadLink.download = entry.filename || "SURF_plot.png";
       downloadLink.textContent = "Download";
-      const image = document.createElement("img");
-      image.className = "w-full rounded-lg border border-slate-200 bg-white";
-      if (entry.showMedia === false) image.classList.add("hidden");
-      image.alt = entry.alt;
-      image.src = entry.src;
+      const media = document.createElement(entry.mediaType === "video" ? "video" : "img");
+      media.className = "w-full rounded-lg border border-slate-200 bg-white";
+      if (entry.showMedia === false) media.classList.add("hidden");
+      if (entry.mediaType === "video") {
+        media.controls = true;
+        media.preload = "metadata";
+      } else {
+        media.alt = entry.alt;
+      }
+      media.src = entry.src;
       header.append(caption, downloadLink);
-      figure.append(header, image);
+      figure.append(header, media);
       if (prepend) plotHistory.prepend(figure);
       else plotHistory.append(figure);
       outputPanel.classList.remove("hidden");
@@ -1707,7 +1727,6 @@
         });
       });
       cmes.splice(0, cmes.length, ...(configuration.cmes || []));
-      if (cmes.length) grabDonkiAtRunStart.checked = false;
       disableDonkiForNonStandardInnerBoundary();
       renderCmes();
       const loadedProfile = speedProfileText.value.split(",").map(Number).filter(Number.isFinite);
@@ -1716,8 +1735,6 @@
         renderSpeedProfile();
       }
       showAmbientPanel(ambientSourceInput.value || "wsa_iswa");
-      syncLongitudeControls();
-      syncIswaMapDateState();
       if (invalidateRun) invalidateCompletedRun();
     }
     let runInProgress = false;
@@ -1769,19 +1786,12 @@
       }
     });
     const retainedConfiguration = sessionStorage.getItem("surfs-up-current-configuration");
+    let restoredPreRunConfiguration = false;
     if (retainedConfiguration) {
-      try { applyConfiguration(JSON.parse(retainedConfiguration), false); } catch (_) {}
-    }
-    const submittedCmes = {{ submitted_cmes|tojson }};
-    if (submittedCmes) {
-      cmes.splice(0, cmes.length, ...submittedCmes);
-      selectedCmeIndex = -1;
-      renderCmes();
-      if (submittedCmes.some(cme => cme.source === "donki")) {
-        document.getElementById("donki-status").textContent =
-          `Loaded ${submittedCmes.filter(cme => cme.source === "donki").length} DONKI cone CME(s) at run start.`;
-      }
-      sessionStorage.setItem("surfs-up-current-configuration", JSON.stringify(captureConfiguration()));
+      try {
+        applyConfiguration(JSON.parse(retainedConfiguration), false);
+        restoredPreRunConfiguration = true;
+      } catch (_) {}
     }
     document.getElementById("save-configuration").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(captureConfiguration(), null, 2)], {type: "application/json"});
@@ -1796,6 +1806,8 @@
     configurationFile.addEventListener("change", async () => {
       try {
         applyConfiguration(JSON.parse(await configurationFile.files[0].text()));
+        syncSpacecraftIcmeOptions();
+        syncLongitudeControls();
         sessionStorage.removeItem("surfs-up-current-configuration");
       } catch (error) {
         alert(error.message);
@@ -1847,8 +1859,43 @@
     }
     function syncOmniIcmeDefault() {
       if (!omniIcmeList || !modelStartInput.value) return;
+      const spacecraft = document.getElementById("insitu-spacecraft")?.value;
+      if (spacecraft === "STEREO-A") {
+        omniIcmeList.value = "STEREO-A";
+        return;
+      }
       omniIcmeList.value = utcInputDate(modelStartInput).getUTCFullYear() >= 2026
         ? "DONKI" : "CaneRichardson";
+    }
+    function syncSpacecraftIcmeOptions(useDefault = false) {
+      const spacecraft = document.getElementById("insitu-spacecraft")?.value || "OMNI";
+      const icmeBuffer = document.getElementById("insitu-icme-buffer-days");
+      const icmeBufferLabel = document.getElementById("insitu-icme-buffer-label");
+      const currentValue = omniIcmeList?.value;
+      const choices = spacecraft === "STEREO-A"
+        ? [["STEREO-A", "Jian list"], ["None", "None"]]
+        : [["None", "None"], ["CaneRichardson", "CaneRichardson"], ["DONKI", "DONKI"]];
+      if (!omniIcmeList) return;
+      omniIcmeList.replaceChildren(...choices.map(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }));
+      const validValues = choices.map(([value]) => value);
+      if (!useDefault && validValues.includes(currentValue)) {
+        omniIcmeList.value = currentValue;
+      } else {
+        syncOmniIcmeDefault();
+      }
+      syncIcmeBufferState();
+    }
+    function syncIcmeBufferState() {
+      const icmeBuffer = document.getElementById("insitu-icme-buffer-days");
+      const icmeBufferLabel = document.getElementById("insitu-icme-buffer-label");
+      const disabled = omniIcmeList?.value === "None";
+      if (icmeBuffer) icmeBuffer.disabled = disabled;
+      if (icmeBufferLabel) icmeBufferLabel.classList.toggle("opacity-50", disabled);
     }
     function syncOmniForecastTimeState() {
       if (!omniForecastDatetime || !insituMode) return;
@@ -1898,8 +1945,15 @@
     });
     modelStartInput.addEventListener("input", syncOmniForecastTime);
     modelStartInput.addEventListener("input", syncOmniIcmeDefault);
-    syncOmniForecastTime();
-    syncOmniIcmeDefault();
+    syncSpacecraftIcmeOptions();
+    if (!restoredPreRunConfiguration) {
+      syncOmniForecastTime();
+      syncOmniIcmeDefault();
+    }
+    document.getElementById("insitu-spacecraft")?.addEventListener("change", () => {
+      syncSpacecraftIcmeOptions(true);
+    });
+    omniIcmeList?.addEventListener("change", syncIcmeBufferState);
     if (insituMode) {
       insituMode.addEventListener("change", syncOmniForecastTimeState);
       syncOmniForecastTimeState();
@@ -1907,7 +1961,7 @@
     if (iswaUseModelStart) {
       iswaUseModelStart.addEventListener("change", syncIswaMapDateState);
       iswaMapDate.addEventListener("change", syncModelStartFromIswaMapDate);
-      syncIswaMapDateState();
+      if (!restoredPreRunConfiguration) syncIswaMapDateState();
     }
     [modelCrNumber, modelCrLongitude].forEach(input => {
       input.addEventListener("change", () => {
@@ -1923,7 +1977,7 @@
     }
     cmeLaunchDay.addEventListener("change", syncCmeDatetimeFromDay);
     cmeLaunchDatetime.addEventListener("change", syncCmeDayFromDatetime);
-    syncCmeDatetimeFromDay();
+    if (!restoredPreRunConfiguration) syncCmeDatetimeFromDay();
 
     const modelInnerRadius = document.querySelector('[name="rmin"]');
     const cmeInitialHeight = document.getElementById("cme-initial-height");
@@ -2135,7 +2189,7 @@
         if (label) label.classList.toggle("opacity-50", !available);
       });
     }
-    function syncModelDependentControls() {
+    function syncModelDependentControls(updateFrame = false) {
       const mapControls = document.getElementById("map-controls");
       if (mapControls) mapControls.disabled = oneDimensionalToggle.checked;
       const mapTabButton = document.querySelector('[data-inner-tab="map-product"]');
@@ -2143,7 +2197,9 @@
       if (mapTabButton) mapTabButton.disabled = oneDimensionalToggle.checked;
       document.querySelector('[name="lon_min"]').disabled = oneDimensionalToggle.checked;
       document.querySelector('[name="lon_max"]').disabled = oneDimensionalToggle.checked;
-      frameSelect.value = oneDimensionalToggle.checked ? "synodic" : "sidereal";
+      if (updateFrame) {
+        frameSelect.value = oneDimensionalToggle.checked ? "synodic" : "sidereal";
+      }
       if (modelGammaRow && modelGammaInput) {
         const gammaEnabled = solverSelect.value !== "huxt";
         modelGammaInput.disabled = !gammaEnabled;
@@ -2159,7 +2215,7 @@
       }
       syncMovieHcsControls();
     }
-    oneDimensionalToggle.addEventListener("change", syncModelDependentControls);
+    oneDimensionalToggle.addEventListener("change", () => syncModelDependentControls(true));
     solverSelect.addEventListener("change", syncModelDependentControls);
     if (includeBpolToggle) {
       includeBpolToggle.addEventListener("change", () => {

@@ -3,6 +3,7 @@
 import datetime
 import html
 import json
+from urllib.error import URLError
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -234,6 +235,17 @@ def test_template_uses_clearer_top_tabs_without_duplicate_panel_headings():
     assert 'data-inner-tabs="omni-boundaries"' in template
     assert 'data-omni-source="insitu_backmapped">Backmapped boundary</button>' in template
     assert 'data-omni-source="omni">Run from 1 AU outwards</button>' in template
+    assert '("omni_group", "In SItu")' in template
+    assert '>In SItu boundary conditions</legend>' in template
+    assert '<select name="insitu_spacecraft" id="insitu-spacecraft">' in template
+    assert '<option value="OMNI" selected>OMNI</option>' in template
+    assert '<option value="STEREO-A">STEREO-A</option>' in template
+    assert '[["STEREO-A", "Jian list"], ["None", "None"]]' in template
+    assert 'syncSpacecraftIcmeOptions(true)' in template
+    assert 'name="insitu_icme_buffer_days" id="insitu-icme-buffer-days"' in template
+    assert 'min="0" step="0.25" value="2"' in template
+    assert 'const disabled = omniIcmeList?.value === "None"' in template
+    assert 'omniIcmeList?.addEventListener("change", syncIcmeBufferState)' in template
     assert ">Outward propagation</span>" not in template
     assert ">Model parameters</h2>" not in template
     assert ">Ambient solar wind</h2>" not in template
@@ -342,6 +354,7 @@ def test_template_hides_post_run_tabs_when_run_becomes_stale():
 
 def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
     template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    app_source = Path("surfs_up/web/app.py").read_text(encoding="utf-8")
 
     assert 'data-tab="outputs"' in template
     assert 'data-panel="outputs"' in template
@@ -372,7 +385,13 @@ def test_template_keeps_outputs_tab_visible_and_marks_new_outputs():
     assert "downloadLink.download = entry.filename || \"SURF_plot.png\";" in template
     assert "downloadLink.textContent = \"Download\";" in template
     assert "filename: `SURF_${kind}_plot_${timestamp.toISOString().replace(/[:.]/g, \"-\")}.png`" in template
-    assert 'filename: `SURF_${tag}_movie.gif`' in template
+    assert 'filename: `SURF_${tag}_movie.${extension}`' in template
+    assert 'const movieUrl = `${runBase}/movie/${kind}.mp4?${movieQuery}`' in template
+    assert 'entry.mediaType === "video" ? "video" : "img"' in template
+    assert "media.controls = true" in template
+    assert 'id="movie-ts-omni" type="checkbox" checked' in template
+    assert 'plot_omni: withTimeseries && document.getElementById("movie-ts-omni").checked' in template
+    assert 'options["plot_omni"] = request.args.get("plot_omni", "1") == "1"' in app_source
     assert "addPlotOutput(entry);" in template
     assert "saveFigureOutput(entry);" in template
     assert "URL.createObjectURL(blob)" not in template[
@@ -558,7 +577,7 @@ def test_manual_cme_absolute_defaults_come_from_surf_constants():
     assert 'surf_defaults["T_sw_21p5"]' in app_source
 
 
-def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
+def test_successful_run_does_not_replace_pre_run_cme_editor_state(monkeypatch):
     import surfs_up.web.app as web_app
 
     donki_cme = {
@@ -631,14 +650,8 @@ def test_run_start_donki_cmes_are_returned_to_populate_cme_tab(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert b"const submittedCmes =" in response.data
-    assert b"2026-test-donki" in response.data
-    assert b"Loaded ${submittedCmes.filter" in response.data
-    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
-    submitted_block = template.split("const submittedCmes =", 1)[1].split(
-        'document.getElementById("save-configuration")', 1
-    )[0]
-    assert "grabDonkiAtRunStart.checked = false" not in submitted_block
+    assert b"const submittedCmes =" not in response.data
+    assert b"2026-test-donki" not in response.data
 
 
 def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):
@@ -677,6 +690,129 @@ def test_omni_outward_run_does_not_auto_fetch_donki(monkeypatch):
     assert simulation.ambient["source"] == "omni"
     assert simulation.cmes == []
     assert simulation.model["grab_donki_at_run_start"] is False
+
+
+def test_run_displays_error_when_donki_cannot_be_accessed(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    def refuse_connection(*_args, **_kwargs):
+        raise URLError("connection refused")
+
+    monkeypatch.setattr(web_app, "urlopen", refuse_connection)
+    monkeypatch.setattr(
+        web_app,
+        "_model_defaults",
+        lambda: {
+            "default_start": "2026-07-03T12:00:00",
+            "default_iswa_map_datetime": "2026-07-03T12:00",
+            "default_cr_num": 2300,
+            "default_cr_lon": 0.0,
+            "default_latitude": 0.0,
+        },
+    )
+    response = create_app({"TESTING": True}).test_client().post(
+        "/",
+        data={
+            "action": "run",
+            "ambient_source": "insitu_backmapped",
+            "insitu_mode": "reconstruction",
+            "grab_donki_at_run_start": "on",
+            "solver": "huxt",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "speed_kms": "400",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "0",
+            "lon_max": "360",
+            "frame": "sidereal",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"DONKI CME data could not be accessed" in response.data
+    assert b"Grab DONKI CMEs at run start" in response.data
+
+
+def test_failed_run_does_not_replace_retained_pre_run_cmes(monkeypatch):
+    import surfs_up.web.app as web_app
+
+    monkeypatch.setattr(web_app, "build_generated_code", lambda _simulation: "# code")
+    monkeypatch.setattr(
+        web_app,
+        "run_generated_code",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            success=False,
+            model=None,
+            message="Run failed",
+            output="failure details",
+        ),
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_model_defaults",
+        lambda: {
+            "default_start": "2026-07-03T12:00:00",
+            "default_iswa_map_datetime": "2026-07-03T12:00",
+            "default_cr_num": 2300,
+            "default_cr_lon": 0.0,
+            "default_latitude": 0.0,
+        },
+    )
+    response = create_app({"TESTING": True}).test_client().post(
+        "/",
+        data={
+            "action": "run",
+            "ambient_source": "insitu_backmapped",
+            "insitu_mode": "reconstruction",
+            "solver": "huxt",
+            "rmin": "21.5",
+            "rmax": "240",
+            "latitude": "0",
+            "simtime_days": "5",
+            "start_datetime": "2026-07-03T12:00",
+            "cr_num": "2300",
+            "cr_lon_init_deg": "0",
+            "lon_min": "0",
+            "lon_max": "360",
+            "frame": "sidereal",
+            "cmes_json": '[{"source":"manual","speed":800}]',
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"Run failed" in response.data
+    assert b"const submittedCmes =" not in response.data
+
+
+def test_restoring_configuration_does_not_change_donki_checkbox():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+    apply_configuration = template.split("function applyConfiguration", 1)[1].split(
+        "let runInProgress", 1
+    )[0]
+
+    assert "grabDonkiAtRunStart.checked = false" not in apply_configuration
+
+
+def test_post_run_restore_does_not_recalculate_form_values():
+    template = Path("surfs_up/web/templates/index.html").read_text(encoding="utf-8")
+
+    assert "let restoredPreRunConfiguration = false" in template
+    assert "restoredPreRunConfiguration = true" in template
+    assert "if (!restoredPreRunConfiguration) syncIswaMapDateState();" in template
+    assert "if (!restoredPreRunConfiguration) syncCmeDatetimeFromDay();" in template
+    assert "function syncModelDependentControls(updateFrame = false)" in template
+    assert "if (updateFrame)" in template
+    assert "syncModelDependentControls(true)" in template
+    apply_configuration = template.split("function applyConfiguration", 1)[1].split(
+        "let runInProgress", 1
+    )[0]
+    assert "syncIswaMapDateState();" not in apply_configuration
+    assert "syncLongitudeControls();" not in apply_configuration
+    assert "syncSpacecraftIcmeOptions();\n        syncLongitudeControls();" in template
 
 
 def test_preview_donki_option_sets_codegen_flag_without_fetching(monkeypatch):
